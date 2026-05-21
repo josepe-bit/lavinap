@@ -29,9 +29,12 @@ app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
 
+
+/*
 const cors = require('cors');
 
 // Permite peticiones desde tu frontend en Vercel
 app.use(cors({
   origin: 'https://lavinap.vercel.app' // Reemplaza con la URL de tu frontend en Vercel
 }));
+*/
