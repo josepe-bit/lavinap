@@ -5,6 +5,7 @@ exports.getActiveMessages = async (req, res) => {
         const [rows] = await pool.query('SELECT id, titulo, detalle FROM Mensajes WHERE activo = true ORDER BY id DESC');
         res.json(rows);
     } catch (error) {
+        console.error('Error fetching active messages:', error);
         res.status(500).json({ message: 'Error fetching active messages' });
     }
 };
@@ -19,6 +20,7 @@ exports.getTarifas = async (req, res) => {
         `);
         res.json(rows);
     } catch (error) {
+        console.error('Error fetching tarifas:', error);
         res.status(500).json({ message: 'Error fetching tarifas' });
     }
 };
