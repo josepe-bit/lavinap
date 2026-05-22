@@ -72,3 +72,36 @@ exports.getParametros = async (req, res) => {
         res.status(500).json({ message: 'Error fetching parametros' });
     }
 };
+
+exports.getDbDebug = async (req, res) => {
+    try {
+        const dbConfig = {
+            host: process.env.DB_HOST,
+            port: process.env.DB_PORT,
+            user: process.env.DB_USER,
+            database: process.env.DB_NAME,
+            sslEnabled: !!(process.env.DB_SSL === 'true' || (process.env.DB_HOST && process.env.DB_HOST.includes('aivencloud.com'))),
+            hasPassword: !!process.env.DB_PASSWORD,
+        };
+        
+        let connectionError = null;
+        try {
+            const [rows] = await pool.query('SELECT 1 + 1 AS solution');
+        } catch (err) {
+            connectionError = {
+                message: err.message,
+                code: err.code,
+                errno: err.errno,
+                sqlState: err.sqlState
+            };
+        }
+        
+        res.json({
+            config: dbConfig,
+            connectionError: connectionError,
+            status: connectionError ? 'failed' : 'success'
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
