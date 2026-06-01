@@ -18,6 +18,18 @@ const AdminDashboard = () => {
     const [reservasRecurrentes, setReservasRecurrentes] = useState([]);
     const [promociones, setPromociones] = useState([]);
     const [metaPromos, setMetaPromos] = useState(10);
+    const [parametros, setParametros] = useState({
+        nombre_establecimiento: '',
+        documento_representante: '',
+        nombre_representante: '',
+        email_representante: '',
+        telefono_representante: '',
+        whatsapp_establecimiento: '',
+        email_establecimiento: '',
+        celular_establecimiento: '',
+        numero_nequi: '',
+        meta_juegos_promocion: 10
+    });
     
     // Torneos & Premios States
     const [torneos, setTorneos] = useState([]);
@@ -192,6 +204,31 @@ const AdminDashboard = () => {
             setUsuarios(res.data);
         } catch (error) {
             console.error('Error fetching users', error);
+        }
+    };
+
+    const fetchParametros = async () => {
+        try {
+            const res = await axios.get(`${API_URL}/admin/parametros`, { headers: getAuthHeaders() });
+            setParametros(res.data || {});
+        } catch (error) {
+            console.error('Error fetching parametros:', error);
+        }
+    };
+
+    const handleParametrosChange = (e) => {
+        const { name, value } = e.target;
+        setParametros(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleParametrosSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            await axios.put(`${API_URL}/admin/parametros`, parametros, { headers: getAuthHeaders() });
+            alert('Parámetros actualizados exitosamente');
+            fetchParametros();
+        } catch (error) {
+            alert('Error al guardar los parámetros');
         }
     };
 
@@ -1045,6 +1082,7 @@ const AdminDashboard = () => {
             items: [
                 { key: 'usuarios', label: 'Usuarios', icon: <ShieldCheck size={18} />, fetch: fetchUsuarios },
                 { key: 'mensajes', label: 'Mensajes', icon: <MessageSquare size={18} />, fetch: fetchMensajes },
+                { key: 'parametros', label: 'Parámetros', icon: <Wrench size={18} />, fetch: fetchParametros },
             ],
         },
     ];
@@ -2889,6 +2927,165 @@ const AdminDashboard = () => {
                                     </table>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Tab Content: Parámetros */}
+                {activeTab === 'parametros' && currentUser?.username === 'admin' && (
+                    <div className="max-w-4xl mx-auto">
+                        <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+                            <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center gap-3">
+                                <div className="bg-blue-600 p-2 rounded-lg text-white">
+                                    <Wrench size={24} />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900">Parámetros del Sistema</h2>
+                                    <p className="text-sm text-gray-500 mt-1">Configuración global del establecimiento, contacto y promociones.</p>
+                                </div>
+                            </div>
+                            <form onSubmit={handleParametrosSubmit} className="p-6 space-y-6">
+                                {/* Sección: Establecimiento */}
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 border-b pb-2">Información del Establecimiento</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del Establecimiento</label>
+                                            <input
+                                                type="text"
+                                                name="nombre_establecimiento"
+                                                value={parametros.nombre_establecimiento || ''}
+                                                onChange={handleParametrosChange}
+                                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm p-2.5 border"
+                                                placeholder="Ej. Canchas La Viña"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico Establecimiento</label>
+                                            <input
+                                                type="email"
+                                                name="email_establecimiento"
+                                                value={parametros.email_establecimiento || ''}
+                                                onChange={handleParametrosChange}
+                                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm p-2.5 border"
+                                                placeholder="establecimiento@correo.com"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Celular Establecimiento</label>
+                                            <input
+                                                type="text"
+                                                name="celular_establecimiento"
+                                                value={parametros.celular_establecimiento || ''}
+                                                onChange={handleParametrosChange}
+                                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm p-2.5 border"
+                                                placeholder="300 000 0000"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp Establecimiento</label>
+                                            <input
+                                                type="text"
+                                                name="whatsapp_establecimiento"
+                                                value={parametros.whatsapp_establecimiento || ''}
+                                                onChange={handleParametrosChange}
+                                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm p-2.5 border"
+                                                placeholder="300 000 0000"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Sección: Representante */}
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 border-b pb-2">Información del Representante</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del Representante</label>
+                                            <input
+                                                type="text"
+                                                name="nombre_representante"
+                                                value={parametros.nombre_representante || ''}
+                                                onChange={handleParametrosChange}
+                                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm p-2.5 border"
+                                                placeholder="Representante Legal"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Documento del Representante</label>
+                                            <input
+                                                type="text"
+                                                name="documento_representante"
+                                                value={parametros.documento_representante || ''}
+                                                onChange={handleParametrosChange}
+                                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm p-2.5 border"
+                                                placeholder="12345678"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico Representante</label>
+                                            <input
+                                                type="email"
+                                                name="email_representante"
+                                                value={parametros.email_representante || ''}
+                                                onChange={handleParametrosChange}
+                                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm p-2.5 border"
+                                                placeholder="representante@correo.com"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono Representante</label>
+                                            <input
+                                                type="text"
+                                                name="telefono_representante"
+                                                value={parametros.telefono_representante || ''}
+                                                onChange={handleParametrosChange}
+                                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm p-2.5 border"
+                                                placeholder="300 000 0000"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Sección: Configuración del Sistema */}
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 border-b pb-2">Configuración Operativa</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Número de Cuenta Nequi</label>
+                                            <input
+                                                type="text"
+                                                name="numero_nequi"
+                                                value={parametros.numero_nequi || ''}
+                                                onChange={handleParametrosChange}
+                                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm p-2.5 border"
+                                                placeholder="300 000 0000"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Meta Juegos Promoción (Para 1 Gratis)</label>
+                                            <input
+                                                type="number"
+                                                name="meta_juegos_promocion"
+                                                value={parametros.meta_juegos_promocion || 10}
+                                                onChange={handleParametrosChange}
+                                                min="1"
+                                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm p-2.5 border"
+                                                placeholder="10"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end pt-4 border-t border-gray-100">
+                                    <button
+                                        type="submit"
+                                        className="bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 px-6 py-3 flex items-center gap-2 transition-colors shadow-md hover:shadow-lg"
+                                    >
+                                        <Save size={18} /> Guardar Parámetros
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 )}
