@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+require('dotenv').config();
 
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
@@ -441,4 +442,121 @@ const sendAdminNotificationEmail = async ({ to, clientName, serviceName, date, s
     }
 };
 
-module.exports = { sendConfirmationEmail, sendProgramacionEmail, sendResultadosEmail, sendAdminNotificationEmail };
+/**
+ * Envía correo de cancelación de reserva al cliente.
+ */
+const sendCancellationEmail = async ({ to, fromEmail, clientName, serviceName, date, startTime, endTime }) => {
+    const formattedDate = new Date(date + 'T00:00:00').toLocaleDateString('es-CO', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin:0;padding:0;background-color:#fff5f5;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+        <div style="max-width:600px;margin:0 auto;padding:20px;">
+            <!-- Header -->
+            <div style="background:linear-gradient(135deg,#e53e3e,#c53030);border-radius:16px 16px 0 0;padding:32px 24px;text-align:center;">
+                <h1 style="color:#ffffff;margin:0;font-size:28px;font-weight:800;letter-spacing:-0.5px;">
+                    ⚽ La Viña
+                </h1>
+                <p style="color:#fed7d7;margin:8px 0 0;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:2px;">
+                    Canchas Sintéticas
+                </p>
+            </div>
+
+            <!-- Body -->
+            <div style="background:#ffffff;padding:32px 24px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">
+                <!-- Rejection Badge -->
+                <div style="text-align:center;margin-bottom:24px;">
+                    <div style="display:inline-block;background:#fff5f5;border:2px solid #fed7d7;border-radius:50%;width:64px;height:64px;line-height:64px;font-size:32px;">
+                        ❌
+                    </div>
+                    <h2 style="color:#9b2c2c;margin:16px 0 4px;font-size:22px;font-weight:800;">
+                        Reserva Cancelada o Rechazada
+                    </h2>
+                    <p style="color:#6b7280;margin:0;font-size:14px;">
+                        Lo sentimos, tu reserva ha sido cancelada o denegada por la administración.
+                    </p>
+                </div>
+
+                <!-- Greeting -->
+                <p style="color:#374151;font-size:16px;line-height:1.6;margin-bottom:24px;">
+                    Hola <strong style="color:#111827;">${clientName}</strong>,
+                </p>
+                <p style="color:#374151;font-size:15px;line-height:1.6;margin-bottom:24px;">
+                    Te informamos que tu solicitud de reserva en <strong>Canchas Sintéticas La Viña</strong> ha sido cancelada o no pudo ser confirmada. A continuación los detalles de la reserva:
+                </p>
+
+                <!-- Reservation Details Card -->
+                <div style="background:linear-gradient(135deg,#fff5f5,#fff5f5);border:1px solid #fed7d7;border-radius:12px;padding:24px;margin-bottom:24px;">
+                    <table style="width:100%;border-collapse:collapse;">
+                        <tr>
+                            <td style="padding:10px 0;border-bottom:1px solid #fee2e2;">
+                                <span style="color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">🏟️ Cancha / Servicio</span>
+                            </td>
+                            <td style="padding:10px 0;border-bottom:1px solid #fee2e2;text-align:right;">
+                                <span style="color:#111827;font-size:15px;font-weight:700;">${serviceName}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:10px 0;border-bottom:1px solid #fee2e2;">
+                                <span style="color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">📅 Fecha</span>
+                            </td>
+                            <td style="padding:10px 0;border-bottom:1px solid #fee2e2;text-align:right;">
+                                <span style="color:#111827;font-size:15px;font-weight:700;">${formattedDate}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:10px 0;">
+                                <span style="color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">🕐 Horario</span>
+                            </td>
+                            <td style="padding:10px 0;text-align:right;">
+                                <span style="color:#111827;font-size:15px;font-weight:700;">${startTime} - ${endTime}</span>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- Contact Info -->
+                <div style="text-align:center;margin-bottom:24px;background:#fffaf0;border:1px solid #feebc8;border-left:4px solid #dd6b20;border-radius:8px;padding:16px 20px;">
+                    <p style="color:#7b341e;font-size:14px;line-height:1.5;margin:0;">
+                        Si crees que esto es un error o deseas reprogramar, por favor contáctanos al WhatsApp o llámanos directamente para validar la disponibilidad de otros horarios.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div style="background:#f9fafb;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 16px 16px;padding:24px;text-align:center;">
+                <p style="color:#6b7280;font-size:13px;margin:0 0 8px;">
+                    © 2024 La Viña Canchas Sintéticas. Todos los derechos reservados.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>`;
+
+    try {
+        const senderEmail = fromEmail && fromEmail.trim() !== '' ? fromEmail : process.env.EMAIL_USER;
+        const info = await transporter.sendMail({
+            from: `"La Viña Canchas Sintéticas" <${senderEmail}>`,
+            to,
+            subject: '❌ Reserva Cancelada - La Viña',
+            html: htmlContent
+        });
+        console.log('Email de cancelación enviado:', info.messageId);
+        return { success: true, messageId: info.messageId };
+    } catch (error) {
+        console.error('Error sending email de cancelación:', error);
+        return { success: false, error: error.message };
+    }
+};
+
+module.exports = { sendConfirmationEmail, sendProgramacionEmail, sendResultadosEmail, sendAdminNotificationEmail, sendCancellationEmail };

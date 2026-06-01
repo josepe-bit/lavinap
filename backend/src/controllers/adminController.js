@@ -1,7 +1,7 @@
 const pool = require('../config/db');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { sendConfirmationEmail, sendProgramacionEmail, sendResultadosEmail } = require('../services/emailService');
+const { sendConfirmationEmail, sendProgramacionEmail, sendResultadosEmail, sendCancellationEmail } = require('../services/emailService');
 const xlsx = require('xlsx');
 
 // Simple email validation function
@@ -42,9 +42,9 @@ exports.updateReservationStatus = async (req, res) => {
             return res.status(404).json({ message: 'Reserva no encontrada' });
         }
 
-        // Si se confirma la reserva, enviar email al cliente
+        // Si se confirma o cancela la reserva, enviar email al cliente
         let emailSent = false;
-        if (estado === 'confirmado') {
+        if (estado === 'confirmado' || estado === 'cancelado') {
             try {
                 const [paramRows] = await pool.query('SELECT email_establecimiento FROM Parametros WHERE id = 1');
                 const fromEmail = paramRows.length > 0 ? paramRows[0].email_establecimiento : null;
@@ -65,20 +65,32 @@ exports.updateReservationStatus = async (req, res) => {
                         ? reserva.fecha.split('T')[0]
                         : new Date(reserva.fecha).toISOString().split('T')[0];
 
-                    const emailResult = await sendConfirmationEmail({
-                        to: reserva.cliente_correo,
-                        fromEmail,
-                        clientName: reserva.cliente_nombre,
-                        serviceName: reserva.servicio_nombre,
-                        date: fechaStr,
-                        startTime: reserva.hora_inicio.substring(0, 5),
-                        endTime: reserva.hora_fin.substring(0, 5)
-                    });
-                    emailSent = emailResult.success;
+                    if (estado === 'confirmado') {
+                        const emailResult = await sendConfirmationEmail({
+                            to: reserva.cliente_correo,
+                            fromEmail,
+                            clientName: reserva.cliente_nombre,
+                            serviceName: reserva.servicio_nombre,
+                            date: fechaStr,
+                            startTime: reserva.hora_inicio.substring(0, 5),
+                            endTime: reserva.hora_fin.substring(0, 5)
+                        });
+                        emailSent = emailResult.success;
+                    } else if (estado === 'cancelado') {
+                        const emailResult = await sendCancellationEmail({
+                            to: reserva.cliente_correo,
+                            fromEmail,
+                            clientName: reserva.cliente_nombre,
+                            serviceName: reserva.servicio_nombre,
+                            date: fechaStr,
+                            startTime: reserva.hora_inicio.substring(0, 5),
+                            endTime: reserva.hora_fin.substring(0, 5)
+                        });
+                        emailSent = emailResult.success;
+                    }
                 }
             } catch (emailError) {
-                console.error('Error al enviar email de confirmación:', emailError);
-                // No se bloquea la confirmación si falla el email
+                console.error(`Error al enviar email de ${estado}:`, emailError);
             }
         }
 
