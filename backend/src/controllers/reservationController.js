@@ -99,6 +99,8 @@ exports.createReservation = async (req, res) => {
                     sendAdminNotificationEmail({
                         to: emailsToSend.join(','),
                         clientName: nombre,
+                        clientEmail: correo,
+                        clientPhone: celular,
                         serviceName: serviceName,
                         date: fecha,
                         startTime: hora_inicio,

@@ -339,7 +339,7 @@ const sendResultadosEmail = async (params) => {
     }
 };
 
-const sendAdminNotificationEmail = async ({ to, clientName, serviceName, date, startTime, endTime }) => {
+const sendAdminNotificationEmail = async ({ to, clientName, clientEmail, clientPhone, serviceName, date, startTime, endTime }) => {
     const formattedDate = formatEmailDate(date);
 
     const htmlContent = `
@@ -379,6 +379,22 @@ const sendAdminNotificationEmail = async ({ to, clientName, serviceName, date, s
                             </td>
                             <td style="padding:10px 0;border-bottom:1px solid #d1fae5;text-align:right;">
                                 <span style="color:#111827;font-size:15px;font-weight:700;">${clientName}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:10px 0;border-bottom:1px solid #d1fae5;">
+                                <span style="color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">📧 Correo</span>
+                            </td>
+                            <td style="padding:10px 0;border-bottom:1px solid #d1fae5;text-align:right;">
+                                <span style="color:#111827;font-size:15px;font-weight:700;">${clientEmail || '-'}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:10px 0;border-bottom:1px solid #d1fae5;">
+                                <span style="color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">📱 Celular</span>
+                            </td>
+                            <td style="padding:10px 0;border-bottom:1px solid #d1fae5;text-align:right;">
+                                <span style="color:#111827;font-size:15px;font-weight:700;">${clientPhone || '-'}</span>
                             </td>
                         </tr>
                         <tr>
@@ -431,7 +447,8 @@ const sendAdminNotificationEmail = async ({ to, clientName, serviceName, date, s
 
     try {
         const info = await transporter.sendMail({
-            from: `"Sistema La Viña" <${process.env.EMAIL_USER}>`,
+            from: `"${clientName} (vía La Viña)" <${process.env.EMAIL_USER}>`,
+            replyTo: clientEmail,
             to,
             subject: '🔔 Nueva Reserva Pendiente por Confirmar',
             html: htmlContent
