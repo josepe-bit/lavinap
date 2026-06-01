@@ -9,7 +9,25 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const Home = () => {
     const navigate = useNavigate();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]);
+
+    // Helper to get local YYYY-MM-DD date string
+    const getLocalDateString = () => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    // Helper to format date safely without timezone offset issues
+    const formatLocalDate = (dateVal) => {
+        if (!dateVal) return '';
+        const dateStr = typeof dateVal === 'string' ? dateVal.split('T')[0] : new Date(dateVal).toISOString().split('T')[0];
+        const [year, month, day] = dateStr.split('-');
+        return new Date(year, month - 1, day).toLocaleDateString('es-CO');
+    };
+
+    const [currentDate, setCurrentDate] = useState(getLocalDateString());
     const [reservations, setReservations] = useState([]);
 
     // Modal state
@@ -141,6 +159,7 @@ const Home = () => {
         let isBlocked = false;
 
         for (let r of reservations) {
+            if (r.estado === 'cancelado') continue;
             if (timeSlot >= r.hora_inicio && timeSlot < r.hora_fin) {
                 if (r.id_servicio === servicioId) {
                     isReserved = true;
@@ -163,6 +182,7 @@ const Home = () => {
     const openBookingModal = (hour, servicioId) => {
         setBookingFormData(prev => ({
             ...prev,
+            fecha: currentDate,
             id_servicio: servicioId.toString(),
             hora_inicio: `${hour.toString().padStart(2, '0')}:00`,
             hora_fin: `${(hour + 1).toString().padStart(2, '0')}:00`
@@ -268,7 +288,10 @@ const Home = () => {
                         Reserva nuestras canchas de Fútbol 5 y Fútbol 8. Instalaciones de primera en el Barrio La Viña de Calambeo.
                     </p>
                     <div className="flex justify-center">
-                        <button onClick={() => setIsModalOpen(true)} className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-full font-bold text-lg shadow-xl shadow-green-200 transition-transform transform hover:-translate-y-1 flex items-center gap-2">
+                        <button onClick={() => {
+                            setBookingFormData(prev => ({ ...prev, fecha: currentDate }));
+                            setIsModalOpen(true);
+                        }} className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-full font-bold text-lg shadow-xl shadow-green-200 transition-transform transform hover:-translate-y-1 flex items-center gap-2">
                             <Calendar size={20} /> Reservar Ahora
                         </button>
                     </div>
@@ -452,7 +475,7 @@ const Home = () => {
                                         <Trophy size={64} className="mx-auto text-amber-100 mb-4 drop-shadow-[0_0_15px_rgba(255,255,255,0.5)] transform group-hover:scale-110 transition-transform duration-500" />
                                         <h4 className="text-3xl md:text-4xl font-black text-white drop-shadow-sm uppercase tracking-wide">{torneo.nombre}</h4>
                                         <div className="mt-4 inline-flex items-center gap-2 bg-black/20 text-amber-50 py-1.5 px-4 rounded-full font-semibold backdrop-blur-sm border border-white/10">
-                                            <CalendarDays size={18} /> Fecha de Inicio: {new Date(torneo.fecha_inicio).toLocaleDateString('es-CO')}
+                                            <CalendarDays size={18} /> Fecha de Inicio: {formatLocalDate(torneo.fecha_inicio)}
                                         </div>
                                     </div>
                                     

@@ -80,6 +80,14 @@ const AdminDashboard = () => {
     const [currentUser, setCurrentUser] = useState(null);
     const navigate = useNavigate();
 
+    // Helper to format date safely without timezone offset issues
+    const formatLocalDate = (dateVal) => {
+        if (!dateVal) return '';
+        const dateStr = typeof dateVal === 'string' ? dateVal.split('T')[0] : new Date(dateVal).toISOString().split('T')[0];
+        const [year, month, day] = dateStr.split('-');
+        return new Date(year, month - 1, day).toLocaleDateString('es-CO');
+    };
+
 
 
 
@@ -1217,7 +1225,7 @@ const AdminDashboard = () => {
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="flex items-center text-sm text-gray-900 font-semibold gap-2">
                                                         <Calendar size={16} className="text-gray-400" />
-                                                        {new Date(reserva.fecha).toLocaleDateString('es-CO')}
+                                                        {formatLocalDate(reserva.fecha)}
                                                     </div>
                                                     <div className="text-sm text-gray-500 mt-1">
                                                         {reserva.hora_inicio.substring(0, 5)} - {reserva.hora_fin.substring(0, 5)}
@@ -1401,8 +1409,8 @@ const AdminDashboard = () => {
                                                             <div className="text-xs text-gray-500 mt-1">{grupo.hora_inicio} - {grupo.hora_fin}</div>
                                                         </td>
                                                         <td className="px-6 py-4 whitespace-nowrap">
-                                                            <div className="text-sm text-gray-800 font-medium">{new Date(grupo.fecha_desde).toLocaleDateString()} a</div>
-                                                            <div className="text-sm text-gray-800 font-medium">{new Date(grupo.fecha_hasta).toLocaleDateString()}</div>
+                                                            <div className="text-sm text-gray-800 font-medium">{formatLocalDate(grupo.fecha_desde)} a</div>
+                                                            <div className="text-sm text-gray-800 font-medium">{formatLocalDate(grupo.fecha_hasta)}</div>
                                                         </td>
                                                         <td className="px-6 py-4 whitespace-nowrap">
                                                             <div className="text-sm font-bold text-purple-600 text-center bg-purple-100 rounded-full w-8 h-8 flex items-center justify-center mx-auto shadow-sm">
@@ -2724,7 +2732,7 @@ const AdminDashboard = () => {
                                     <div className="flex justify-between items-center mb-4 border-b border-teal-200 pb-2">
                                         <h3 className="text-lg font-bold text-teal-900 flex items-center gap-2">
                                             <Swords size={20} className="text-teal-600" />
-                                            Partidos del {new Date(selectedFechaForPartidos.fecha).toLocaleDateString()}
+                                            Partidos del {formatLocalDate(selectedFechaForPartidos.fecha)}
                                         </h3>
                                         <button type="button" onClick={() => setSelectedFechaForPartidos(null)} className="text-gray-400 hover:text-gray-700"><X size={20} /></button>
                                     </div>
@@ -2893,7 +2901,7 @@ const AdminDashboard = () => {
                                                         <td className="px-6 py-4 whitespace-nowrap">
                                                             <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
                                                                 <CalendarDays size={14} className="text-emerald-500"/>
-                                                                {new Date(new Date(f.fecha).getTime() + new Date().getTimezoneOffset() * 60000).toLocaleDateString()}
+                                                                {formatLocalDate(f.fecha)}
                                                             </div>
                                                             <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                                                                 <Clock size={12}/> {f.hora_inicio?.substring(0,5)} - {f.hora_fin?.substring(0,5)}

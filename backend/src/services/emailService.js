@@ -23,16 +23,23 @@ transporter.verify((error, success) => {
     }
 });
 
-/**
- * Envía correo de confirmación de reserva al cliente.
- */
-const sendConfirmationEmail = async ({ to, fromEmail, clientName, serviceName, date, startTime, endTime }) => {
-    const formattedDate = new Date(date + 'T00:00:00').toLocaleDateString('es-CO', {
+const formatEmailDate = (date) => {
+    if (!date) return '';
+    const dateStr = typeof date === 'string' ? date : new Date(date).toISOString().split('T')[0];
+    const [year, month, day] = dateStr.split('-');
+    return new Date(year, month - 1, day).toLocaleDateString('es-CO', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
         day: 'numeric'
     });
+};
+
+/**
+ * Envía correo de confirmación de reserva al cliente.
+ */
+const sendConfirmationEmail = async ({ to, fromEmail, clientName, serviceName, date, startTime, endTime }) => {
+    const formattedDate = formatEmailDate(date);
 
     const htmlContent = `
     <!DOCTYPE html>
@@ -333,12 +340,7 @@ const sendResultadosEmail = async (params) => {
 };
 
 const sendAdminNotificationEmail = async ({ to, clientName, serviceName, date, startTime, endTime }) => {
-    const formattedDate = new Date(date + 'T00:00:00').toLocaleDateString('es-CO', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
+    const formattedDate = formatEmailDate(date);
 
     const htmlContent = `
     <!DOCTYPE html>
@@ -446,12 +448,7 @@ const sendAdminNotificationEmail = async ({ to, clientName, serviceName, date, s
  * Envía correo de cancelación de reserva al cliente.
  */
 const sendCancellationEmail = async ({ to, fromEmail, clientName, serviceName, date, startTime, endTime }) => {
-    const formattedDate = new Date(date + 'T00:00:00').toLocaleDateString('es-CO', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
+    const formattedDate = formatEmailDate(date);
 
     const htmlContent = `
     <!DOCTYPE html>
