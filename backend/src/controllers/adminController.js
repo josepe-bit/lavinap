@@ -41,17 +41,18 @@ exports.updateReservationStatus = async (req, res) => {
         if (result.affectedRows === 0) {
             return res.status(404).json({ message: 'Reserva no encontrada' });
         }
-
-        // Si se confirma o cancela la reserva, enviar email al cliente
+        // Si se confirma o cancela la reserva, enviar notificaciones al cliente
         let emailSent = false;
         if (estado === 'confirmado' || estado === 'cancelado') {
             try {
-                const [paramRows] = await pool.query('SELECT email_establecimiento FROM Parametros WHERE id = 1');
+                const [paramRows] = await pool.query('SELECT email_establecimiento, enviar_email, enviar_whatsapp FROM Parametros WHERE id = 1');
                 const fromEmail = paramRows.length > 0 ? paramRows[0].email_establecimiento : null;
+                const dbEnviarEmail = paramRows.length > 0 ? (paramRows[0].enviar_email !== 0) : true;
+                const dbEnviarWhatsapp = paramRows.length > 0 ? (paramRows[0].enviar_whatsapp === 1) : false;
 
                 const [rows] = await pool.query(`
                     SELECT r.fecha, r.hora_inicio, r.hora_fin,
-                           c.nombre AS cliente_nombre, c.correo AS cliente_correo,
+                           c.nombre AS cliente_nombre, c.correo AS cliente_correo, c.celular AS cliente_celular,
                            s.nombre AS servicio_nombre
                     FROM Reservas r
                     JOIN Clientes c ON r.id_cliente = c.id
@@ -59,46 +60,83 @@ exports.updateReservationStatus = async (req, res) => {
                     WHERE r.id = ?
                 `, [id]);
 
-                if (rows.length > 0 && rows[0].cliente_correo) {
+                if (rows.length > 0) {
                     const reserva = rows[0];
                     const fechaStr = typeof reserva.fecha === 'string'
                         ? reserva.fecha.split('T')[0]
                         : new Date(reserva.fecha).toISOString().split('T')[0];
 
-                    if (estado === 'confirmado') {
-                        sendConfirmationEmail({
-                            to: reserva.cliente_correo,
-                            fromEmail,
-                            clientName: reserva.cliente_nombre,
-                            serviceName: reserva.servicio_nombre,
-                            date: fechaStr,
-                            startTime: reserva.hora_inicio.substring(0, 5),
-                            endTime: reserva.hora_fin.substring(0, 5)
-                        }).then(res => {
-                            console.log(`Email de confirmacion enviado: ${res.success}`);
-                        }).catch(err => {
-                            console.error('Error enviando email de confirmacion:', err);
-                        });
-                        emailSent = true;
-                    } else if (estado === 'cancelado') {
-                        sendCancellationEmail({
-                            to: reserva.cliente_correo,
-                            fromEmail,
-                            clientName: reserva.cliente_nombre,
-                            serviceName: reserva.servicio_nombre,
-                            date: fechaStr,
-                            startTime: reserva.hora_inicio.substring(0, 5),
-                            endTime: reserva.hora_fin.substring(0, 5)
-                        }).then(res => {
-                            console.log(`Email de cancelacion enviado: ${res.success}`);
-                        }).catch(err => {
-                            console.error('Error enviando email de cancelacion:', err);
-                        });
+                    const [year, month, day] = fechaStr.split('-');
+                    const formattedDateStr = `${day}/${month}/${year}`;
+
+                    // 1. Enviar Email si está activo
+                    if (process.env.SEND_EMAIL === 'true' && dbEnviarEmail && reserva.cliente_correo) {
+                        if (estado === 'confirmado') {
+                            sendConfirmationEmail({
+                                to: reserva.cliente_correo,
+                                fromEmail,
+                                clientName: reserva.cliente_nombre,
+                                serviceName: reserva.servicio_nombre,
+                                date: fechaStr,
+                                startTime: reserva.hora_inicio.substring(0, 5),
+                                endTime: reserva.hora_fin.substring(0, 5)
+                            }).then(res => {
+                                console.log(`Email de confirmacion enviado: ${res.success}`);
+                            }).catch(err => {
+                                console.error('Error enviando email de confirmacion:', err);
+                            });
+                        } else if (estado === 'cancelado') {
+                            sendCancellationEmail({
+                                to: reserva.cliente_correo,
+                                fromEmail,
+                                clientName: reserva.cliente_nombre,
+                                serviceName: reserva.servicio_nombre,
+                                date: fechaStr,
+                                startTime: reserva.hora_inicio.substring(0, 5),
+                                endTime: reserva.hora_fin.substring(0, 5)
+                            }).then(res => {
+                                console.log(`Email de cancelacion enviado: ${res.success}`);
+                            }).catch(err => {
+                                console.error('Error enviando email de cancelacion:', err);
+                            });
+                        }
                         emailSent = true;
                     }
+
+                    // 2. Enviar WhatsApp si está activo
+                    if (process.env.SEND_WHATSAPP === 'true' && dbEnviarWhatsapp && reserva.cliente_celular) {
+                        const { sendWhatsAppMessage } = require('../services/whatsappService');
+                        let text = '';
+                        
+                        if (estado === 'confirmado') {
+                            text = `⚽ *¡Tu reserva ha sido confirmada!* 🏟️\n\n` +
+                                   `Hola *${reserva.cliente_nombre}*,\n` +
+                                   `Nos complace informarte que tu reserva en *La Viña Canchas Sintéticas* ha sido aprobada:\n\n` +
+                                   `🏟️ *Cancha:* ${reserva.servicio_nombre}\n` +
+                                   `📅 *Fecha:* ${formattedDateStr}\n` +
+                                   `🕐 *Horario:* ${reserva.hora_inicio.substring(0, 5)} - ${reserva.hora_fin.substring(0, 5)}\n\n` +
+                                   `⏰ _Te recomendamos llegar 15 minutos antes. ¡Nos vemos en la cancha!_`;
+                        } else if (estado === 'cancelado') {
+                            text = `❌ *Reserva Cancelada / Rechazada* ⚽\n\n` +
+                                   `Hola *${reserva.cliente_nombre}*,\n` +
+                                   `Te informamos que tu reserva en *La Viña Canchas Sintéticas* ha sido cancelada o no pudo ser confirmada por la administración:\n\n` +
+                                   `🏟️ *Cancha:* ${reserva.servicio_nombre}\n` +
+                                   `📅 *Fecha:* ${formattedDateStr}\n` +
+                                   `🕐 *Horario:* ${reserva.hora_inicio.substring(0, 5)} - ${reserva.hora_fin.substring(0, 5)}\n\n` +
+                                   `📞 _Si tienes dudas o quieres reagendar otro espacio, puedes comunicarte con nosotros._`;
+                        }
+
+                        if (text !== '') {
+                            sendWhatsAppMessage(reserva.cliente_celular, text).then(res => {
+                                console.log(`WhatsApp de ${estado} enviado: ${res.success}`);
+                            }).catch(err => {
+                                console.error(`Error enviando WhatsApp de ${estado}:`, err);
+                            });
+                        }
+                    }
                 }
-            } catch (emailError) {
-                console.error(`Error al enviar email de ${estado}:`, emailError);
+            } catch (notificationError) {
+                console.error(`Error al procesar notificaciones de ${estado}:`, notificationError);
             }
         }
 

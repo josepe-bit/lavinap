@@ -3086,6 +3086,30 @@ const AdminDashboard = () => {
                                                 placeholder="10"
                                             />
                                         </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Enviar Correo Electrónico</label>
+                                            <select
+                                                name="enviar_email"
+                                                value={parametros.enviar_email !== undefined ? String(parametros.enviar_email) : "1"}
+                                                onChange={handleParametrosChange}
+                                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm p-2.5 border bg-white"
+                                            >
+                                                <option value="1">Sí</option>
+                                                <option value="0">No</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Enviar Mensajes de WhatsApp</label>
+                                            <select
+                                                name="enviar_whatsapp"
+                                                value={parametros.enviar_whatsapp !== undefined ? String(parametros.enviar_whatsapp) : "0"}
+                                                onChange={handleParametrosChange}
+                                                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm p-2.5 border bg-white"
+                                            >
+                                                <option value="1">Sí</option>
+                                                <option value="0">No</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
 

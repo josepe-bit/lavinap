@@ -86,30 +86,60 @@ exports.createReservation = async (req, res) => {
 
         // Enviar notificación a administradores de forma asíncrona (sin bloquear respuesta)
         try {
-            const [parametros] = await pool.query('SELECT email_establecimiento, email_representante FROM Parametros LIMIT 1');
+            const [parametros] = await pool.query('SELECT email_establecimiento, email_representante, whatsapp_establecimiento, telefono_representante, enviar_email, enviar_whatsapp FROM Parametros LIMIT 1');
             const [servicioInfo] = await pool.query('SELECT nombre FROM Servicios WHERE id = ?', [id_servicio]);
             
             if (parametros.length > 0 && servicioInfo.length > 0) {
-                const { email_establecimiento, email_representante } = parametros[0];
+                const { email_establecimiento, email_representante, whatsapp_establecimiento, telefono_representante, enviar_email, enviar_whatsapp } = parametros[0];
+                const dbEnviarEmail = enviar_email !== 0;
+                const dbEnviarWhatsapp = enviar_whatsapp === 1;
                 const serviceName = servicioInfo[0].nombre;
                 
-                const emailsToSend = [email_establecimiento, email_representante].filter(e => e && e.trim() !== '');
-                if (emailsToSend.length > 0) {
-                    const { sendAdminNotificationEmail } = require('../services/emailService');
-                    sendAdminNotificationEmail({
-                        to: emailsToSend.join(','),
-                        clientName: nombre,
-                        clientEmail: correo,
-                        clientPhone: celular,
-                        serviceName: serviceName,
-                        date: fecha,
-                        startTime: hora_inicio,
-                        endTime: hora_fin
-                    }).catch(err => console.error('Error en trigger de email:', err));
+                // 1. Enviar Correo si está activo
+                if (process.env.SEND_EMAIL === 'true' && dbEnviarEmail) {
+                    const emailsToSend = [email_establecimiento, email_representante].filter(e => e && e.trim() !== '');
+                    if (emailsToSend.length > 0) {
+                        const { sendAdminNotificationEmail } = require('../services/emailService');
+                        sendAdminNotificationEmail({
+                            to: emailsToSend.join(','),
+                            clientName: nombre,
+                            clientEmail: correo,
+                            clientPhone: celular,
+                            serviceName: serviceName,
+                            date: fecha,
+                            startTime: hora_inicio,
+                            endTime: hora_fin
+                        }).catch(err => console.error('Error en trigger de email:', err));
+                    }
+                }
+
+                // 2. Enviar WhatsApp si está activo
+                if (process.env.SEND_WHATSAPP === 'true' && dbEnviarWhatsapp) {
+                    const phonesToSend = [whatsapp_establecimiento, telefono_representante].filter(p => p && p.trim() !== '');
+                    if (phonesToSend.length > 0) {
+                        const { sendWhatsAppMessage } = require('../services/whatsappService');
+                        
+                        const dateStr = typeof fecha === 'string' ? fecha : new Date(fecha).toISOString().split('T')[0];
+                        const [year, month, day] = dateStr.split('-');
+                        const formattedDate = `${day}/${month}/${year}`;
+                        
+                        const text = `⚽ *Nueva Reserva Registrada* 🏟️\n\n` +
+                                     `👤 *Cliente:* ${nombre}\n` +
+                                     `📧 *Correo:* ${correo}\n` +
+                                     `📱 *Celular:* ${celular}\n` +
+                                     `🏟️ *Cancha:* ${serviceName}\n` +
+                                     `📅 *Fecha:* ${formattedDate}\n` +
+                                     `🕐 *Horario:* ${hora_inicio.substring(0, 5)} - ${hora_fin.substring(0, 5)}\n\n` +
+                                     `⚡ _Acción requerida: Revisa y confirma esta reserva en el Panel Admin._`;
+
+                        phonesToSend.forEach(phone => {
+                            sendWhatsAppMessage(phone, text).catch(err => console.error('Error en trigger de whatsapp:', err));
+                        });
+                    }
                 }
             }
-        } catch (emailErr) {
-            console.error('Error procesando emails de notificación administrativa:', emailErr);
+        } catch (notificationErr) {
+            console.error('Error procesando notificaciones administrativas:', notificationErr);
         }
 
     } catch (error) {
