@@ -66,7 +66,7 @@ exports.updateReservationStatus = async (req, res) => {
                         : new Date(reserva.fecha).toISOString().split('T')[0];
 
                     if (estado === 'confirmado') {
-                        const emailResult = await sendConfirmationEmail({
+                        sendConfirmationEmail({
                             to: reserva.cliente_correo,
                             fromEmail,
                             clientName: reserva.cliente_nombre,
@@ -74,10 +74,14 @@ exports.updateReservationStatus = async (req, res) => {
                             date: fechaStr,
                             startTime: reserva.hora_inicio.substring(0, 5),
                             endTime: reserva.hora_fin.substring(0, 5)
+                        }).then(res => {
+                            console.log(`Email de confirmacion enviado: ${res.success}`);
+                        }).catch(err => {
+                            console.error('Error enviando email de confirmacion:', err);
                         });
-                        emailSent = emailResult.success;
+                        emailSent = true;
                     } else if (estado === 'cancelado') {
-                        const emailResult = await sendCancellationEmail({
+                        sendCancellationEmail({
                             to: reserva.cliente_correo,
                             fromEmail,
                             clientName: reserva.cliente_nombre,
@@ -85,8 +89,12 @@ exports.updateReservationStatus = async (req, res) => {
                             date: fechaStr,
                             startTime: reserva.hora_inicio.substring(0, 5),
                             endTime: reserva.hora_fin.substring(0, 5)
+                        }).then(res => {
+                            console.log(`Email de cancelacion enviado: ${res.success}`);
+                        }).catch(err => {
+                            console.error('Error enviando email de cancelacion:', err);
                         });
-                        emailSent = emailResult.success;
+                        emailSent = true;
                     }
                 }
             } catch (emailError) {

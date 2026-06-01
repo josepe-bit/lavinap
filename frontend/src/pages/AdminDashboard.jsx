@@ -7,6 +7,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const AdminDashboard = () => {
     const [activeTab, setActiveTab] = useState('reservas');
+    const [updatingStatusId, setUpdatingStatusId] = useState(null);
     const [openCategories, setOpenCategories] = useState({ canchas: true, campeonatos: false, utilidades: false });
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [reservations, setReservations] = useState([]);
@@ -722,11 +723,14 @@ const AdminDashboard = () => {
     };
 
     const updateStatus = async (id, status) => {
+        setUpdatingStatusId(id);
         try {
             await axios.put(`${API_URL}/admin/reservations/${id}/status`, { estado: status }, { headers: getAuthHeaders() });
-            setReservations(reservations.map(r => r.id === id ? { ...r, estado: status } : r));
+            setReservations(prev => prev.map(r => r.id === id ? { ...r, estado: status } : r));
         } catch (err) {
             alert('Error actualizando el estado de la reserva');
+        } finally {
+            setUpdatingStatusId(null);
         }
     };
 
@@ -1269,15 +1273,15 @@ const AdminDashboard = () => {
                                                     {reserva.estado === 'pendiente' && (
                                                         <div className="flex justify-end gap-2">
                                                             <button
-                                                                onClick={() => updateStatus(reserva.id, 'confirmado')}
-                                                                className="text-green-600 hover:text-green-900 bg-green-50 p-2 rounded-full transition-colors"
+                                                                onClick={() => updateStatus(reserva.id, 'confirmado')} disabled={updatingStatusId === reserva.id}
+                                                                className={`text-green-600 hover:text-green-900 bg-green-50 p-2 rounded-full transition-colors ${updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                                 title="Confirmar"
                                                             >
                                                                 <CheckCircle size={20} />
                                                             </button>
                                                             <button
-                                                                onClick={() => updateStatus(reserva.id, 'cancelado')}
-                                                                className="text-red-600 hover:text-red-900 bg-red-50 p-2 rounded-full transition-colors"
+                                                                onClick={() => updateStatus(reserva.id, 'cancelado')} disabled={updatingStatusId === reserva.id}
+                                                                className={`text-red-600 hover:text-red-900 bg-red-50 p-2 rounded-full transition-colors ${updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                                 title="Cancelar"
                                                             >
                                                                 <XCircle size={20} />
