@@ -1,27 +1,12 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 require('dotenv').config();
 
-const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false, // true for 465, false for other ports
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS // Contraseña de aplicación de Gmail
-    },
-    tls: {
-        rejectUnauthorized: false
-    }
-});
-
-// Verify transporter on startup
-transporter.verify((error, success) => {
-    if (error) {
-        console.error('Transporter verification failed:', error);
-    } else {
-        console.log('Transporter is ready to send emails');
-    }
-});
+if (!process.env.RESEND_API_KEY) {
+    console.warn('⚠️ ADVERTENCIA: RESEND_API_KEY no está configurado en el archivo .env. El envío de correos no funcionará.');
+} else {
+    console.log('Resend service is configured and ready');
+}
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const formatEmailDate = (date) => {
     if (!date) return '';
@@ -145,15 +130,19 @@ const sendConfirmationEmail = async ({ to, fromEmail, clientName, serviceName, d
     </html>`;
 
     try {
-        const senderEmail = fromEmail && fromEmail.trim() !== '' ? fromEmail : process.env.EMAIL_USER;
-        const info = await transporter.sendMail({
-            from: `"La Viña Canchas Sintéticas" <${senderEmail}>`,
+        const senderEmail = process.env.RESEND_FROM || 'onboarding@resend.dev';
+        const { data, error } = await resend.emails.send({
+            from: `La Viña Canchas Sintéticas <${senderEmail}>`,
             to,
             subject: '✅ Reserva Confirmada - La Viña',
             html: htmlContent
         });
-        console.log('Email de confirmación enviado:', info.messageId);
-        return { success: true, messageId: info.messageId };
+        if (error) {
+            console.error('Error enviando email de confirmación (Resend):', error);
+            return { success: false, error: error.message || error };
+        }
+        console.log('Email de confirmación enviado:', data.id);
+        return { success: true, messageId: data.id };
     } catch (error) {
         console.error('Error enviando email de confirmación:', error);
         return { success: false, error: error.message };
@@ -220,6 +209,7 @@ const sendProgramacionEmail = async (params) => {
     </html>`;
 
     // Send to each recipient individually
+    const senderEmail = process.env.RESEND_FROM || 'onboarding@resend.dev';
     const recipients = to.split(',').map(email => email.trim()).filter(email => email);
     let successCount = 0;
     let lastError = null;
@@ -227,13 +217,18 @@ const sendProgramacionEmail = async (params) => {
     for (const recipient of recipients) {
         try {
             console.log('Sending programacion email to:', recipient);
-            const info = await transporter.sendMail({
-                from: `"La Viña Torneos" <${process.env.EMAIL_USER}>`,
+            const { data, error } = await resend.emails.send({
+                from: `La Viña Torneos <${senderEmail}>`,
                 to: recipient,
                 subject: 'Programación de Fecha - Torneo La Viña',
                 html: htmlContent
             });
-            successCount++;
+            if (error) {
+                console.error('Error enviando Programación a', recipient, '(Resend):', error);
+                lastError = error.message || error;
+            } else {
+                successCount++;
+            }
         } catch (error) {
             console.error('Error enviando Programación a', recipient, ':', error);
             lastError = error.message;
@@ -312,6 +307,7 @@ const sendResultadosEmail = async (params) => {
     </html>`;
 
     // Send to each recipient individually
+    const senderEmail = process.env.RESEND_FROM || 'onboarding@resend.dev';
     const recipients = to.split(',').map(email => email.trim()).filter(email => email);
     let successCount = 0;
     let lastError = null;
@@ -319,13 +315,18 @@ const sendResultadosEmail = async (params) => {
     for (const recipient of recipients) {
         try {
             console.log('Sending resultados email to:', recipient);
-            const info = await transporter.sendMail({
-                from: `"La Viña Torneos" <${process.env.EMAIL_USER}>`,
+            const { data, error } = await resend.emails.send({
+                from: `La Viña Torneos <${senderEmail}>`,
                 to: recipient,
                 subject: 'Resultados de Fecha - Torneo La Viña',
                 html: htmlContent
             });
-            successCount++;
+            if (error) {
+                console.error('Error enviando Resultados a', recipient, '(Resend):', error);
+                lastError = error.message || error;
+            } else {
+                successCount++;
+            }
         } catch (error) {
             console.error('Error enviando Resultados a', recipient, ':', error);
             lastError = error.message;
@@ -446,15 +447,21 @@ const sendAdminNotificationEmail = async ({ to, clientName, clientEmail, clientP
     </html>`;
 
     try {
-        const info = await transporter.sendMail({
-            from: `"${clientName} (vía La Viña)" <${process.env.EMAIL_USER}>`,
-            replyTo: clientEmail,
-            to,
+        const senderEmail = process.env.RESEND_FROM || 'onboarding@resend.dev';
+        const recipients = to.split(',').map(email => email.trim()).filter(email => email);
+        const { data, error } = await resend.emails.send({
+            from: `${clientName} (vía La Viña) <${senderEmail}>`,
+            reply_to: clientEmail,
+            to: recipients,
             subject: '🔔 Nueva Reserva Pendiente por Confirmar',
             html: htmlContent
         });
-        console.log('Email a administradores enviado:', info.messageId);
-        return { success: true, messageId: info.messageId };
+        if (error) {
+            console.error('Error enviando email a administradores (Resend):', error);
+            return { success: false, error: error.message || error };
+        }
+        console.log('Email a administradores enviado:', data.id);
+        return { success: true, messageId: data.id };
     } catch (error) {
         console.error('Error enviando email a administradores:', error);
         return { success: false, error: error.message };
@@ -558,17 +565,21 @@ const sendCancellationEmail = async ({ to, fromEmail, clientName, serviceName, d
     </html>`;
 
     try {
-        const senderEmail = fromEmail && fromEmail.trim() !== '' ? fromEmail : process.env.EMAIL_USER;
-        const info = await transporter.sendMail({
-            from: `"La Viña Canchas Sintéticas" <${senderEmail}>`,
+        const senderEmail = process.env.RESEND_FROM || 'onboarding@resend.dev';
+        const { data, error } = await resend.emails.send({
+            from: `La Viña Canchas Sintéticas <${senderEmail}>`,
             to,
             subject: '❌ Reserva Cancelada - La Viña',
             html: htmlContent
         });
-        console.log('Email de cancelación enviado:', info.messageId);
-        return { success: true, messageId: info.messageId };
+        if (error) {
+            console.error('Error enviando email de cancelación (Resend):', error);
+            return { success: false, error: error.message || error };
+        }
+        console.log('Email de cancelación enviado:', data.id);
+        return { success: true, messageId: data.id };
     } catch (error) {
-        console.error('Error sending email de cancelación:', error);
+        console.error('Error enviando email de cancelación:', error);
         return { success: false, error: error.message };
     }
 };
