@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { LogOut, Calendar, CheckCircle, XCircle, LayoutDashboard, DollarSign, Save, Trash2, ClipboardList, Edit, Users, MessageSquare, ShieldCheck, Gift, Eye, EyeOff, ChevronDown, Trophy, Wrench, Menu, X, Dribbble, UsersRound, Layers, CalendarDays, UserPlus, Clock, Swords, Upload } from 'lucide-react';
+import { LogOut, Calendar, CheckCircle, XCircle, LayoutDashboard, DollarSign, Save, Trash2, ClipboardList, Edit, Users, MessageSquare, ShieldCheck, Gift, Eye, EyeOff, ChevronDown, Trophy, Wrench, Menu, X, Dribbble, UsersRound, Layers, CalendarDays, UserPlus, Clock, Swords, Upload, Search } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -14,6 +14,8 @@ const AdminDashboard = () => {
     const [tarifas, setTarifas] = useState([]);
     const [servicios, setServicios] = useState([]);
     const [clientes, setClientes] = useState([]);
+    const [searchTermClientes, setSearchTermClientes] = useState('');
+    const [searchQueryClientes, setSearchQueryClientes] = useState('');
     const [mensajes, setMensajes] = useState([]);
     const [usuarios, setUsuarios] = useState([]);
     const [reservasRecurrentes, setReservasRecurrentes] = useState([]);
@@ -1105,6 +1107,17 @@ const AdminDashboard = () => {
         blue: { bg: 'bg-blue-600', bgLight: 'bg-blue-50', text: 'text-blue-700', hoverBg: 'hover:bg-blue-50', activeBg: 'bg-blue-100', activeText: 'text-blue-800', border: 'border-blue-500' },
     };
 
+    const filteredClientes = clientes.filter(c => {
+        const query = searchQueryClientes.toLowerCase().trim();
+        if (!query) return true;
+        return (
+            (c.nombre && c.nombre.toLowerCase().includes(query)) ||
+            (c.documento && c.documento.toLowerCase().includes(query)) ||
+            (c.celular && c.celular.toLowerCase().includes(query)) ||
+            (c.correo && c.correo.toLowerCase().includes(query))
+        );
+    });
+
     return (
         <div className="min-h-screen bg-gray-50">
             {/* Top Navbar */}
@@ -1719,6 +1732,45 @@ const AdminDashboard = () => {
                                         </label>
                                     </div>
                                 </div>
+                                {/* Barra de búsqueda de clientes */}
+                                <div className="px-6 py-3 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row gap-3 items-center">
+                                    <div className="relative flex-1 w-full">
+                                        <input
+                                            type="text"
+                                            placeholder="Buscar cliente por nombre, documento, celular o correo..."
+                                            value={searchTermClientes}
+                                            onChange={(e) => setSearchTermClientes(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    setSearchQueryClientes(searchTermClientes);
+                                                }
+                                            }}
+                                            className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm bg-white"
+                                        />
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <Search size={18} className="text-gray-400" />
+                                        </div>
+                                        {searchTermClientes && (
+                                            <button
+                                                onClick={() => {
+                                                    setSearchTermClientes('');
+                                                    setSearchQueryClientes('');
+                                                }}
+                                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={() => setSearchQueryClientes(searchTermClientes)}
+                                        className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold px-5 py-2 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 shadow-sm"
+                                    >
+                                        <Search size={16} />
+                                        Buscar
+                                    </button>
+                                </div>
+
                                 <div className="overflow-x-auto p-4 pt-0">
                                     <table className="min-w-full divide-y divide-gray-200 mt-4 border border-gray-200 rounded-lg overflow-hidden">
                                         <thead className="bg-gray-50">
@@ -1729,12 +1781,14 @@ const AdminDashboard = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-gray-200">
-                                            {clientes.length === 0 ? (
+                                            {filteredClientes.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan="3" className="px-6 py-8 text-center text-sm text-gray-500">No hay clientes registrados.</td>
+                                                    <td colSpan="3" className="px-6 py-8 text-center text-sm text-gray-500">
+                                                        {searchQueryClientes ? 'No se encontraron clientes que coincidan con la búsqueda.' : 'No hay clientes registrados.'}
+                                                    </td>
                                                 </tr>
                                             ) : (
-                                                clientes.map((c) => (
+                                                filteredClientes.map((c) => (
                                                     <tr key={c.id} className="hover:bg-gray-50">
                                                         <td className="px-6 py-4 whitespace-nowrap">
                                                             <div className="text-sm font-bold text-gray-900">{c.nombre}</div>
