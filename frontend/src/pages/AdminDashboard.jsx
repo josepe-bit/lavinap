@@ -16,6 +16,10 @@ const AdminDashboard = () => {
     const [clientes, setClientes] = useState([]);
     const [searchTermClientes, setSearchTermClientes] = useState('');
     const [searchQueryClientes, setSearchQueryClientes] = useState('');
+    const [searchTermReservas, setSearchTermReservas] = useState('');
+    const [searchQueryReservas, setSearchQueryReservas] = useState('');
+    const [searchTermPromociones, setSearchTermPromociones] = useState('');
+    const [searchQueryPromociones, setSearchQueryPromociones] = useState('');
     const [mensajes, setMensajes] = useState([]);
     const [usuarios, setUsuarios] = useState([]);
     const [reservasRecurrentes, setReservasRecurrentes] = useState([]);
@@ -1118,6 +1122,36 @@ const AdminDashboard = () => {
         );
     });
 
+    const filteredReservations = reservations.filter(r => {
+        const query = searchQueryReservas.toLowerCase().trim();
+        if (!query) return true;
+        
+        // Formatear fecha para poder buscarla como DD/MM/AAAA o similar
+        const fechaStr = formatLocalDate(r.fecha);
+        
+        return (
+            (r.cliente_nombre && r.cliente_nombre.toLowerCase().includes(query)) ||
+            (r.documento && r.documento.toLowerCase().includes(query)) ||
+            (r.celular && r.celular.toLowerCase().includes(query)) ||
+            (r.servicio_nombre && r.servicio_nombre.toLowerCase().includes(query)) ||
+            (r.estado && r.estado.toLowerCase().includes(query)) ||
+            (fechaStr && fechaStr.toLowerCase().includes(query))
+        );
+    });
+
+    const filteredPromociones = promociones.filter(p => {
+        const query = searchQueryPromociones.toLowerCase().trim();
+        if (!query) return true;
+        
+        const servicioStr = p.servicioid == 1 ? 'fútbol 8' : 'fútbol 5';
+        
+        return (
+            (p.cliente_nombre && p.cliente_nombre.toLowerCase().includes(query)) ||
+            (p.cliente_documento && p.cliente_documento.toLowerCase().includes(query)) ||
+            servicioStr.includes(query)
+        );
+    });
+
     return (
         <div className="min-h-screen bg-gray-50">
             {/* Top Navbar */}
@@ -1219,6 +1253,45 @@ const AdminDashboard = () => {
                         <div className="p-6 border-b border-gray-100 flex items-center gap-3">
                             <h2 className="text-xl font-bold text-gray-900">Monitor de Reservas</h2>
                         </div>
+                        {/* Barra de búsqueda de reservas */}
+                        <div className="px-6 py-3 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row gap-3 items-center">
+                            <div className="relative flex-1 w-full">
+                                <input
+                                    type="text"
+                                    placeholder="Buscar reservas por cliente, documento, celular, servicio, estado o fecha (DD/MM/AAAA)..."
+                                    value={searchTermReservas}
+                                    onChange={(e) => setSearchTermReservas(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            setSearchQueryReservas(searchTermReservas);
+                                        }
+                                    }}
+                                    className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm bg-white"
+                                />
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <Search size={18} className="text-gray-400" />
+                                </div>
+                                {searchTermReservas && (
+                                    <button
+                                        onClick={() => {
+                                            setSearchTermReservas('');
+                                            setSearchQueryReservas('');
+                                        }}
+                                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => setSearchQueryReservas(searchTermReservas)}
+                                className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold px-5 py-2 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 shadow-sm"
+                            >
+                                <Search size={16} />
+                                Buscar
+                            </button>
+                        </div>
+
                         <div className="overflow-x-auto">
                             <table className="min-w-full divide-y divide-gray-200">
                                 <thead className="bg-gray-50">
@@ -1232,12 +1305,14 @@ const AdminDashboard = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-100">
-                                    {reservations.length === 0 ? (
+                                    {filteredReservations.length === 0 ? (
                                         <tr>
-                                            <td colSpan="6" className="px-6 py-12 text-center text-gray-500 font-medium">No hay reservas registradas en el sistema.</td>
+                                            <td colSpan="6" className="px-6 py-12 text-center text-gray-500 font-medium">
+                                                {searchQueryReservas ? 'No se encontraron reservas que coincidan con la búsqueda.' : 'No hay reservas registradas en el sistema.'}
+                                            </td>
                                         </tr>
                                     ) : (
-                                        reservations.map((reserva) => (
+                                        filteredReservations.map((reserva) => (
                                             <tr key={reserva.id} className="hover:bg-gray-50 transition-colors">
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="flex items-center text-sm text-gray-900 font-semibold gap-2">
@@ -2119,12 +2194,52 @@ const AdminDashboard = () => {
                         </button>
                     </div>
                 </div>
+                {/* Barra de búsqueda de promociones */}
+                <div className="px-6 py-3 bg-amber-50/50 border-b border-amber-100 flex flex-col sm:flex-row gap-3 items-center">
+                    <div className="relative flex-1 w-full">
+                        <input
+                            type="text"
+                            placeholder="Buscar promociones por cliente, documento o cancha..."
+                            value={searchTermPromociones}
+                            onChange={(e) => setSearchTermPromociones(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    setSearchQueryPromociones(searchTermPromociones);
+                                }
+                            }}
+                            className="w-full pl-10 pr-10 py-2 border border-amber-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm bg-white"
+                        />
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Search size={18} className="text-amber-500" />
+                        </div>
+                        {searchTermPromociones && (
+                            <button
+                                onClick={() => {
+                                    setSearchTermPromociones('');
+                                    setSearchQueryPromociones('');
+                                }}
+                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                            >
+                                <X size={16} />
+                            </button>
+                        )}
+                    </div>
+                    <button
+                        onClick={() => setSearchQueryPromociones(searchTermPromociones)}
+                        className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-white font-bold px-5 py-2 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 shadow-sm"
+                    >
+                        <Search size={16} />
+                        Buscar
+                    </button>
+                </div>
 
                 <div className="p-6">
-                    {promociones.length === 0 ? (
+                    {filteredPromociones.length === 0 ? (
                         <div className="text-center py-16">
                             <Gift size={48} className="mx-auto text-gray-300 mb-4" />
-                            <p className="text-gray-500 font-medium">No hay registros de promociones.</p>
+                            <p className="text-gray-500 font-medium">
+                                {searchQueryPromociones ? 'No se encontraron promociones que coincidan con la búsqueda.' : 'No hay registros de promociones.'}
+                            </p>
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
@@ -2139,7 +2254,7 @@ const AdminDashboard = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
-                                    {promociones.map((promo) => (
+                                    {filteredPromociones.map((promo) => (
                                         <tr key={promo.id} className="hover:bg-amber-50/50 transition-colors">
                                             <td className="px-4 py-3">
                                                 <div className="text-sm font-bold text-gray-900">{promo.cliente_nombre}</div>
@@ -2319,17 +2434,6 @@ const AdminDashboard = () => {
                                                 ))}
                                             </ul>
                                         )}
-                                    </div>
-                                    <div className="mt-6 border-t border-teal-100 pt-4 flex flex-col gap-2">
-                                        <button onClick={() => enviarProgramacion(selectedFechaForPartidos.id)} className="w-full bg-blue-600 text-white rounded-md font-bold text-sm hover:bg-blue-700 py-2 flex justify-center items-center gap-2 transition-colors shadow-sm">
-                                            <Upload size={16} /> Enviar Programación
-                                        </button>
-                                        <button onClick={() => mostrarResultados(selectedFechaForPartidos.id)} className="w-full bg-purple-600 text-white rounded-md font-bold text-sm hover:bg-purple-700 py-2 flex justify-center items-center gap-2 transition-colors shadow-sm">
-                                            <Layers size={16} /> Mostrar Resultados
-                                        </button>
-                                        <button onClick={() => reservarCanchas(selectedFechaForPartidos.id)} className="w-full bg-emerald-600 text-white rounded-md font-bold text-sm hover:bg-emerald-700 py-2 flex justify-center items-center gap-2 transition-colors shadow-sm">
-                                            <CalendarDays size={16} /> Reservar Canchas
-                                        </button>
                                     </div>
                                 </div>
                             )}

@@ -50,6 +50,17 @@ const Home = () => {
     const [torneos, setTorneos] = useState([]);
     const [parametros, setParametros] = useState({});
 
+    // Tournament Inscription Modal State
+    const [isTorneoModalOpen, setIsTorneoModalOpen] = useState(false);
+    const [selectedTorneo, setSelectedTorneo] = useState(null);
+    const [torneoFormData, setTorneoFormData] = useState({
+        nombre: '',
+        celular: '',
+        email: '',
+        mensaje: ''
+    });
+    const [torneoStatus, setTorneoStatus] = useState({ loading: false, error: null, success: false });
+
     // Fetch initial data
     useEffect(() => {
         fetchActiveMessages();
@@ -149,6 +160,42 @@ const Home = () => {
         } catch (err) {
             const errorMsg = err.response?.data?.message || 'Error al procesar la reserva';
             setBookingStatus({ loading: false, error: errorMsg, success: false });
+        }
+    };
+
+    const openTorneoModal = (torneo) => {
+        setSelectedTorneo(torneo);
+        setTorneoFormData({
+            nombre: '',
+            celular: '',
+            email: '',
+            mensaje: ''
+        });
+        setTorneoStatus({ loading: false, error: null, success: false });
+        setIsTorneoModalOpen(true);
+    };
+
+    const handleTorneoChange = (e) => {
+        const { name, value } = e.target;
+        setTorneoFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleTorneoSubmit = async (e) => {
+        e.preventDefault();
+        setTorneoStatus({ loading: true, error: null, success: false });
+        try {
+            await axios.post(`${API_URL}/public/torneos/inscribir`, {
+                ...torneoFormData,
+                torneo_nombre: selectedTorneo.nombre
+            });
+            setTorneoStatus({ loading: false, error: null, success: true });
+            setTimeout(() => {
+                setIsTorneoModalOpen(false);
+                setTorneoStatus({ loading: false, error: null, success: false });
+            }, 3000);
+        } catch (err) {
+            const errorMsg = err.response?.data?.message || 'Error al enviar la solicitud';
+            setTorneoStatus({ loading: false, error: errorMsg, success: false });
         }
     };
 
@@ -535,12 +582,13 @@ const Home = () => {
                                             </div>
                                         )}
 
-                                        <a 
-                                            href={`mailto:${parametros.email_establecimiento || 'lavinacanchas@gmail.com'}?subject=Interesado%20en%20Torneo%20${encodeURIComponent(torneo.nombre)}`}
+                                        <button 
+                                            type="button"
+                                            onClick={() => openTorneoModal(torneo)}
                                             className="mt-auto w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white py-4 px-6 rounded-2xl font-black text-lg uppercase tracking-wider flex items-center justify-center gap-3 shadow-[0_10px_20px_rgba(245,158,11,0.3)] hover:shadow-[0_15px_30px_rgba(245,158,11,0.4)] hover:-translate-y-1 transition-all"
                                         >
                                             <Mail size={24} /> ¡Inscribe tu Equipo Ahora!
-                                        </a>
+                                        </button>
                                     </div>
                                 </div>
                             ))}
@@ -673,6 +721,114 @@ const Home = () => {
                                         <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md font-medium text-sm hover:bg-gray-50">Cancelar</button>
                                         <button type="submit" disabled={bookingStatus.loading} className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md font-medium text-sm hover:bg-green-700 disabled:opacity-50 flex justify-center items-center gap-2">
                                             {bookingStatus.loading ? 'Procesando...' : <><Save size={16} /> Confirmar Reserva</>}
+                                        </button>
+                                    </div>
+                                </form>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL INSCRIPCIÓN A TORNEO */}
+            {isTorneoModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="bg-amber-600 px-6 py-4 flex justify-between items-center flex-shrink-0">
+                            <h3 className="text-white font-bold text-xl flex items-center gap-2">
+                                <Trophy size={20} /> Solicitar Inscripción / Info
+                            </h3>
+                            <button onClick={() => setIsTorneoModalOpen(false)} className="text-white/80 hover:text-white"><X size={24} /></button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto custom-scrollbar">
+                            {torneoStatus.error && (
+                                <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-4 text-sm font-medium border border-red-100">
+                                    {torneoStatus.error}
+                                </div>
+                            )}
+                            {torneoStatus.success && (
+                                <div className="bg-green-50 text-green-700 p-4 rounded-lg mb-4 text-sm font-medium border border-green-100">
+                                    ¡Solicitud de inscripción enviada con éxito! Nos comunicaremos contigo lo antes posible.
+                                </div>
+                            )}
+
+                            {!torneoStatus.success && (
+                                <form onSubmit={handleTorneoSubmit} className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Torneo de interés</label>
+                                        <input 
+                                            type="text" 
+                                            value={selectedTorneo?.nombre || ''} 
+                                            disabled 
+                                            className="w-full border-gray-300 rounded-md shadow-sm text-sm p-2.5 border bg-gray-100 text-gray-700 font-semibold" 
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Nombre Completo *</label>
+                                        <input 
+                                            type="text" 
+                                            name="nombre" 
+                                            value={torneoFormData.nombre} 
+                                            onChange={handleTorneoChange} 
+                                            required 
+                                            placeholder="Ej. Juan Pérez"
+                                            className="w-full border-gray-300 rounded-md shadow-sm focus:ring-amber-500 focus:border-amber-500 text-sm p-2.5 border" 
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Número de Celular *</label>
+                                        <input 
+                                            type="tel" 
+                                            name="celular" 
+                                            value={torneoFormData.celular} 
+                                            onChange={handleTorneoChange} 
+                                            required 
+                                            placeholder="Ej. 3001234567"
+                                            className="w-full border-gray-300 rounded-md shadow-sm focus:ring-amber-500 focus:border-amber-500 text-sm p-2.5 border" 
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico (Opcional)</label>
+                                        <input 
+                                            type="email" 
+                                            name="email" 
+                                            value={torneoFormData.email} 
+                                            onChange={handleTorneoChange} 
+                                            placeholder="Ej. juan@correo.com"
+                                            className="w-full border-gray-300 rounded-md shadow-sm focus:ring-amber-500 focus:border-amber-500 text-sm p-2.5 border" 
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Comentarios / Preguntas (Opcional)</label>
+                                        <textarea 
+                                            name="mensaje" 
+                                            value={torneoFormData.mensaje} 
+                                            onChange={handleTorneoChange} 
+                                            rows="3"
+                                            placeholder="¿Tienes alguna duda sobre los horarios, categorías o costo de inscripción?"
+                                            className="w-full border-gray-300 rounded-md shadow-sm focus:ring-amber-500 focus:border-amber-500 text-sm p-2.5 border resize-none" 
+                                        ></textarea>
+                                    </div>
+
+                                    <div className="pt-4 flex gap-3">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setIsTorneoModalOpen(false)} 
+                                            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md font-medium text-sm hover:bg-gray-50"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button 
+                                            type="submit" 
+                                            disabled={torneoStatus.loading} 
+                                            className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-medium text-sm disabled:opacity-50 flex justify-center items-center gap-2"
+                                        >
+                                            {torneoStatus.loading ? 'Enviando...' : <><Save size={16} /> Enviar Solicitud</>}
                                         </button>
                                     </div>
                                 </form>

@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const emailService = require('../services/emailService');
 
 exports.getActiveMessages = async (req, res) => {
     try {
@@ -72,3 +73,42 @@ exports.getParametros = async (req, res) => {
         res.status(500).json({ message: 'Error fetching parametros' });
     }
 };
+
+exports.inscribirTorneo = async (req, res) => {
+    const { nombre, celular, email, mensaje, torneo_nombre } = req.body;
+
+    if (!nombre || !celular || !torneo_nombre) {
+        return res.status(400).json({ message: 'Nombre, celular y nombre del torneo son requeridos' });
+    }
+
+    try {
+        // 1. Obtener el email del establecimiento de los parámetros
+        const [paramRows] = await pool.query('SELECT email_establecimiento FROM Parametros WHERE id = 1');
+        const emailEstablecimiento = paramRows[0]?.email_establecimiento;
+
+        if (!emailEstablecimiento) {
+            console.error('No se ha configurado el email del establecimiento en parámetros');
+            return res.status(500).json({ message: 'El correo electrónico del establecimiento no está configurado' });
+        }
+
+        // 2. Enviar el correo usando emailService
+        const resendResult = await emailService.sendTorneoInscripcionEmail({
+            to: emailEstablecimiento,
+            clientName: nombre,
+            clientPhone: celular,
+            clientEmail: email || 'No especificado',
+            clientMessage: mensaje || 'Sin comentarios adicionales',
+            torneoName: torneo_nombre
+        });
+
+        if (!resendResult.success) {
+            return res.status(500).json({ message: 'Error al enviar el correo: ' + resendResult.error });
+        }
+
+        res.json({ success: true, message: 'Solicitud de inscripción enviada correctamente' });
+    } catch (error) {
+        console.error('Error en inscribirTorneo:', error);
+        res.status(500).json({ message: 'Error interno del servidor al procesar la inscripción' });
+    }
+};
+

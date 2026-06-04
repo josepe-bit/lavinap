@@ -1121,12 +1121,15 @@ const sendFechasEmailWrapper = async (req, res, sendFunc, typeStr, isProgramacio
         const [partidos] = await pool.query(`
             SELECT pf.*, el.nombre AS equipo_local_nombre, ev.nombre AS equipo_vis_nombre,
                    cl.correo AS email_local, cv.correo AS email_vis,
+                   cl.celular AS celular_local, cv.celular AS celular_vis,
+                   s.nombre AS servicio_nombre,
                    gl.nombre AS grupo_local_nombre, gv.nombre AS grupo_vis_nombre
             FROM ParxFecha pf
             JOIN Equipos el ON pf.equipo_id_local = el.id
             JOIN Clientes cl ON el.cliente_id = cl.id
             JOIN Equipos ev ON pf.equipo_id_vis = ev.id
             JOIN Clientes cv ON ev.cliente_id = cv.id
+            LEFT JOIN Servicios s ON pf.id_servicio = s.id
             LEFT JOIN Grupos gl ON pf.grupo_id_local = gl.id
             LEFT JOIN Grupos gv ON pf.grupo_id_vis = gv.id
             WHERE pf.fec_torneo_id = ?
@@ -1165,7 +1168,89 @@ const sendFechasEmailWrapper = async (req, res, sendFunc, typeStr, isProgramacio
             return res.status(500).json({ message: 'Error al enviar ' + typeStr + (result?.error ? ': ' + result.error : '') });
         }
 
-        res.json({ message: typeStr + ' enviada con éxito a ' + emails.size + ' correo(s)' });
+        // --- ENVÍO DE WHATSAPP ---
+        const dbEnviarWhatsapp = pa.enviar_whatsapp === 1;
+        const shouldSendWhatsapp = process.env.SEND_WHATSAPP === 'true' && dbEnviarWhatsapp;
+        let whatsappSentCount = 0;
+        let whatsappError = null;
+
+        if (shouldSendWhatsapp) {
+            const { sendWhatsAppMessage } = require('../services/whatsappService');
+            
+            // Recopilar celulares únicos de delegados
+            const celulares = new Set();
+            partidos.forEach(p => {
+                if (p.celular_local && p.celular_local.trim()) celulares.add(p.celular_local.trim());
+                if (p.celular_vis && p.celular_vis.trim()) celulares.add(p.celular_vis.trim());
+            });
+
+            if (celulares.size > 0) {
+                // Formatear la fecha para WhatsApp
+                const formattedDate = typeof fecha === 'string'
+                    ? fecha.split('T')[0]
+                    : new Date(fecha).toISOString().split('T')[0];
+                const [year, month, day] = formattedDate.split('-');
+                const dateStr = `${day}/${month}/${year}`;
+
+                let msg = '';
+                if (isProgramacion) {
+                    msg = `🏆 *La Viña Canchas Sintéticas - Programación* ⚽\n` +
+                          `🏟️ *Torneo:* ${torneo_nombre}\n` +
+                          `📅 *Fecha:* ${dateStr}\n\n` +
+                          `*Partidos Programados:*\n` +
+                          `----------------------------------------\n`;
+                    partidos.forEach(p => {
+                        const horaStr = p.hora ? p.hora.substring(0, 5) : 'Por definir';
+                        const canchaStr = p.servicio_nombre || 'Por definir';
+                        msg += `🕐 *Hora:* ${horaStr} | 🏟️ *Cancha:* ${canchaStr}\n` +
+                               `⚽ *${p.equipo_local_nombre}* vs *${p.equipo_vis_nombre}*\n` +
+                               `----------------------------------------\n`;
+                    });
+                    msg += `\n⏰ _Recuerden llegar 15 minutos antes. ¡Éxitos en la cancha!_`;
+                } else {
+                    msg = `🏆 *La Viña Canchas Sintéticas - Resultados* ⚽\n` +
+                          `🏟️ *Torneo:* ${torneo_nombre}\n` +
+                          `📅 *Fecha:* ${dateStr}\n\n` +
+                          `*Resultados del día:*\n` +
+                          `----------------------------------------\n`;
+                    partidos.forEach(p => {
+                        const horaStr = p.hora ? p.hora.substring(0, 5) : 'Por definir';
+                        msg += `⚽ *${p.equipo_local_nombre}* (${p.goles_local || 0}) vs *${p.equipo_vis_nombre}* (${p.goles_vis || 0})\n` +
+                               `🏆 *Puntos:* ${p.equipo_local_nombre} [${p.puntos_local || 0} pts] | ${p.equipo_vis_nombre} [${p.puntos_vis || 0} pts]\n` +
+                               `----------------------------------------\n`;
+                    });
+                    msg += `\n📈 _Tabla de posiciones actualizada en el panel de control._`;
+                }
+
+                for (const celular of celulares) {
+                    try {
+                        const waRes = await sendWhatsAppMessage(celular, msg);
+                        if (waRes.success) {
+                            whatsappSentCount++;
+                        } else {
+                            whatsappError = waRes.error;
+                        }
+                    } catch (err) {
+                        console.error('Error al enviar WhatsApp:', err);
+                        whatsappError = err.message;
+                    }
+                }
+            }
+        }
+
+        // Construir sufijo informativo para la respuesta del servidor
+        let suffix = '';
+        if (process.env.SEND_WHATSAPP !== 'true') {
+            suffix = ' (WhatsApp desactivado en configuración .env)';
+        } else if (!dbEnviarWhatsapp) {
+            suffix = ' (WhatsApp desactivado en Parámetros)';
+        } else if (whatsappSentCount > 0) {
+            suffix = ` y a ${whatsappSentCount} número(s) de WhatsApp`;
+        } else if (whatsappError) {
+            suffix = ` (Error WhatsApp: ${typeof whatsappError === 'object' ? JSON.stringify(whatsappError) : whatsappError})`;
+        }
+
+        res.json({ message: typeStr + ' enviada con éxito a ' + emails.size + ' correo(s)' + suffix });
     } catch (error) {
         console.error('Error al enviar email de fecha:', error);
         res.status(500).json({ message: 'Error interno del servidor' });

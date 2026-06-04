@@ -584,4 +584,120 @@ const sendCancellationEmail = async ({ to, fromEmail, clientName, serviceName, d
     }
 };
 
-module.exports = { sendConfirmationEmail, sendProgramacionEmail, sendResultadosEmail, sendAdminNotificationEmail, sendCancellationEmail };
+const sendTorneoInscripcionEmail = async ({ to, clientName, clientPhone, clientEmail, clientMessage, torneoName }) => {
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin:0;padding:0;background-color:#f0fdf4;font-family:'Segoe UI',sans-serif;">
+        <div style="max-width:600px;margin:0 auto;padding:20px;">
+            <!-- Header -->
+            <div style="background:linear-gradient(135deg,#16a34a,#059669);border-radius:16px 16px 0 0;padding:32px 24px;text-align:center;">
+                <h1 style="color:#ffffff;margin:0;font-size:28px;font-weight:800;">
+                    ⚽ La Viña
+                </h1>
+                <p style="color:#bbf7d0;margin:8px 0 0;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:2px;">
+                    Solicitud de Inscripción / Información
+                </p>
+            </div>
+
+            <!-- Body -->
+            <div style="background:#ffffff;padding:32px 24px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">
+                <p style="color:#374151;font-size:16px;line-height:1.6;margin-bottom:24px;">
+                    Hola Administrador,
+                </p>
+                <p style="color:#374151;font-size:15px;line-height:1.6;margin-bottom:24px;">
+                    Se ha recibido una nueva solicitud de información o inscripción para uno de tus torneos promocionados.
+                </p>
+
+                <!-- Details Card -->
+                <div style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border:1px solid #bbf7d0;border-radius:12px;padding:24px;margin-bottom:24px;">
+                    <table style="width:100%;border-collapse:collapse;">
+                        <tr>
+                            <td style="padding:10px 0;border-bottom:1px solid #d1fae5;width:40%;">
+                                <span style="color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">🏆 Torneo</span>
+                            </td>
+                            <td style="padding:10px 0;border-bottom:1px solid #d1fae5;text-align:right;">
+                                <span style="color:#111827;font-size:15px;font-weight:700;">${torneoName}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:10px 0;border-bottom:1px solid #d1fae5;">
+                                <span style="color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">👤 Nombre</span>
+                            </td>
+                            <td style="padding:10px 0;border-bottom:1px solid #d1fae5;text-align:right;">
+                                <span style="color:#111827;font-size:15px;font-weight:700;">${clientName}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:10px 0;border-bottom:1px solid #d1fae5;">
+                                <span style="color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">📱 Celular</span>
+                            </td>
+                            <td style="padding:10px 0;border-bottom:1px solid #d1fae5;text-align:right;">
+                                <span style="color:#111827;font-size:15px;font-weight:700;">
+                                    <a href="https://wa.me/57${clientPhone.replace(/\D/g, '')}" target="_blank" style="color:#16a34a;text-decoration:none;font-weight:bold;">
+                                        ${clientPhone} 💬
+                                    </a>
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:10px 0;border-bottom:1px solid #d1fae5;">
+                                <span style="color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">📧 Correo</span>
+                            </td>
+                            <td style="padding:10px 0;border-bottom:1px solid #d1fae5;text-align:right;">
+                                <span style="color:#111827;font-size:15px;font-weight:700;">${clientEmail}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:10px 0;vertical-align:top;">
+                                <span style="color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">💬 Comentarios</span>
+                            </td>
+                            <td style="padding:10px 0;text-align:right;color:#374151;font-size:15px;line-height:1.4;">
+                                ${clientMessage}
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div style="text-align:center;margin-top:24px;">
+                    <p style="color:#6b7280;font-size:14px;margin:0;">
+                        Puedes contactar directamente al cliente haciendo clic en su número de celular para iniciar un chat de WhatsApp.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div style="background:#f9fafb;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 16px 16px;padding:24px;text-align:center;">
+                <p style="color:#6b7280;font-size:13px;margin:0;">
+                    Sistema de Torneos - La Viña Canchas Sintéticas
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>`;
+
+    try {
+        const senderEmail = process.env.RESEND_FROM || 'onboarding@resend.dev';
+        const { data, error } = await resend.emails.send({
+            from: `Inscripciones La Viña <${senderEmail}>`,
+            to,
+            subject: `🔔 Nueva inscripción/info para el Torneo: ${torneoName}`,
+            html: htmlContent
+        });
+        if (error) {
+            console.error('Error enviando email de inscripción (Resend):', error);
+            return { success: false, error: error.message || error };
+        }
+        console.log('Email de inscripción enviado:', data.id);
+        return { success: true, messageId: data.id };
+    } catch (error) {
+        console.error('Error enviando email de inscripción:', error);
+        return { success: false, error: error.message };
+    }
+};
+
+module.exports = { sendConfirmationEmail, sendProgramacionEmail, sendResultadosEmail, sendAdminNotificationEmail, sendCancellationEmail, sendTorneoInscripcionEmail };
