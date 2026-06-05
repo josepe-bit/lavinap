@@ -20,6 +20,7 @@ const adminRoleMiddleware = (req, res, next) => {
 router.get('/reservations', adminController.getAllReservations);
 router.put('/reservations/:id/status', adminController.updateReservationStatus);
 router.put('/reservations/:id/utilizada', adminController.toggleUtilizada);
+router.delete('/reservations/:id', adminController.deleteReservation);
 router.get('/tarifas', adminRoleMiddleware, adminController.getTarifas);
 router.post('/tarifas', adminRoleMiddleware, adminController.createTarifa);
 router.delete('/tarifas/:id', adminRoleMiddleware, adminController.deleteTarifa);

@@ -9,6 +9,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const Home = () => {
     const navigate = useNavigate();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [copiedNequi, setCopiedNequi] = useState(false);
 
     // Helper to get local YYYY-MM-DD date string
     const getLocalDateString = () => {
@@ -304,8 +305,8 @@ const Home = () => {
                 )}
             </nav>
 
-            <div className="pt-28 pb-16 lg:pt-32 lg:pb-24">
-                <div className="max-w-7xl mx-auto px-4 text-center">
+            <div className="pt-28 pb-16 lg:pt-32 lg:pb-24 bg-gradient-to-b from-green-50/20 via-white to-white">
+                <div className="max-w-7xl mx-auto px-4">
                     
                     {/* Mensajes / Notificaciones Llamativas */}
                     {activeMessages.length > 0 && (
@@ -327,20 +328,129 @@ const Home = () => {
                         </div>
                     )}
 
-                    <h2 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6 tracking-tight">
-                        Tu pasión por el fútbol,<br />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-500 to-emerald-700">al siguiente nivel</span>
-                    </h2>
-                    <p className="mt-4 max-w-2xl mx-auto text-xl text-gray-500 mb-10">
-                        Reserva nuestras canchas de Fútbol 5 y Fútbol 8. Instalaciones de primera en el Barrio La Viña de Calambeo.
-                    </p>
-                    <div className="flex justify-center">
-                        <button onClick={() => {
-                            setBookingFormData(prev => ({ ...prev, fecha: currentDate }));
-                            setIsModalOpen(true);
-                        }} className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-full font-bold text-lg shadow-xl shadow-green-200 transition-transform transform hover:-translate-y-1 flex items-center gap-2">
-                            <Calendar size={20} /> Reservar Ahora
-                        </button>
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center mt-6">
+                        {/* Tarjeta Nequi Izquierda */}
+                        <div className="lg:col-span-3 order-2 lg:order-1 flex justify-center">
+                            <div className="w-full max-w-[280px] bg-gradient-to-br from-[#1d123d] via-[#1d123d] to-[#bf1873] text-white rounded-3xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1.5 border border-white/10 relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-xl -mr-6 -mt-6"></div>
+                                <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-[#bf1873]/30 rounded-full blur-xl"></div>
+                                
+                                <div className="flex justify-between items-center mb-3.5 relative z-10">
+                                    <span className="text-[10px] font-bold tracking-widest text-[#5cdbb5] uppercase bg-[#5cdbb5]/10 px-2 py-0.5 rounded-full border border-[#5cdbb5]/20">
+                                        Abonos
+                                    </span>
+                                    <span className="text-sm font-black tracking-tighter text-white">
+                                        NEQUI
+                                    </span>
+                                </div>
+                                
+                                <div className="text-center mb-3 relative z-10">
+                                    <h4 className="text-base font-bold text-white mb-0.5">Escanea y Paga</h4>
+                                    <p className="text-[11px] text-white/70">Realiza tu abono fácil</p>
+                                </div>
+
+                                <div className="bg-white p-3 rounded-2xl shadow-inner mb-3.5 flex justify-center items-center relative z-10 transition-transform duration-300 group-hover:scale-[1.02]">
+                                    <img 
+                                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&color=1d123d&data=${encodeURIComponent(parametros.numero_nequi || '3016063151')}`}
+                                        alt="QR Pago Nequi" 
+                                        className="w-36 h-36 object-contain"
+                                        onError={(e) => { e.target.src = "https://placehold.co/150x150/white/1d123d?text=Nequi"; }}
+                                    />
+                                </div>
+
+                                <div className="bg-white/10 rounded-xl py-1.5 px-2.5 flex justify-between items-center mb-3 relative z-10 border border-white/5">
+                                    <div className="flex flex-col text-left">
+                                        <span className="text-[9px] text-white/60 font-semibold uppercase tracking-wider">Número de Nequi</span>
+                                        <span className="text-xs font-bold text-[#5cdbb5] font-mono tracking-wider">{parametros.numero_nequi || '301 606 3151'}</span>
+                                    </div>
+                                    <button 
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(parametros.numero_nequi || '3016063151');
+                                            setCopiedNequi(true);
+                                            setTimeout(() => setCopiedNequi(false), 2000);
+                                        }}
+                                        className="p-1 hover:bg-white/10 rounded-lg text-white/80 hover:text-white transition-colors"
+                                        title="Copiar número"
+                                    >
+                                        {copiedNequi ? (
+                                            <span className="text-[10px] font-bold text-[#5cdbb5]">¡Listo!</span>
+                                        ) : (
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                            </svg>
+                                        )}
+                                    </button>
+                                </div>
+
+                                <p className="text-[10px] text-white/85 text-center leading-relaxed relative z-10 font-medium">
+                                    Abona el 50% y envía el comprobante por WhatsApp.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Contenido Central */}
+                        <div className="lg:col-span-6 order-1 lg:order-2 text-center flex flex-col items-center py-4">
+                            <h2 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6 tracking-tight leading-tight">
+                                Tu pasión por el fútbol,<br />
+                                <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-500 to-emerald-700">al siguiente nivel</span>
+                            </h2>
+                            <p className="max-w-md mx-auto text-lg text-gray-500 mb-8 leading-relaxed">
+                                Reserva nuestras canchas de Fútbol 5 y Fútbol 8. Instalaciones de primera en el Barrio La Viña de Calambeo.
+                            </p>
+                            <div className="flex justify-center">
+                                <button onClick={() => {
+                                    setBookingFormData(prev => ({ ...prev, fecha: currentDate }));
+                                    setIsModalOpen(true);
+                                }} className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-full font-bold text-lg shadow-xl shadow-green-200 hover:shadow-green-300/30 transition-all transform hover:-translate-y-0.5 flex items-center gap-2">
+                                    <Calendar size={20} /> Reservar Ahora
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Tarjeta Sitio Web Derecha */}
+                        <div className="lg:col-span-3 order-3 lg:order-3 flex justify-center">
+                            <div className="w-full max-w-[280px] bg-gradient-to-br from-[#059669] via-[#047857] to-[#064e3b] text-white rounded-3xl p-5 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1.5 border border-white/10 relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-xl -mr-6 -mt-6"></div>
+                                <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-emerald-500/30 rounded-full blur-xl"></div>
+                                
+                                <div className="flex justify-between items-center mb-3.5 relative z-10">
+                                    <span className="text-[10px] font-bold tracking-widest text-[#a7f3d0] uppercase bg-[#a7f3d0]/10 px-2 py-0.5 rounded-full border border-[#a7f3d0]/20">
+                                        Sitio Web
+                                    </span>
+                                    <span className="text-sm font-black tracking-tight text-white flex items-center gap-0.5">
+                                        LA VIÑA
+                                    </span>
+                                </div>
+                                
+                                <div className="text-center mb-3 relative z-10">
+                                    <h4 className="text-base font-bold text-white mb-0.5">Reservas Online</h4>
+                                    <p className="text-[11px] text-white/70">Escanea e ingresa al sitio</p>
+                                </div>
+
+                                <div className="bg-white p-3 rounded-2xl shadow-inner mb-3.5 flex justify-center items-center relative z-10 transition-transform duration-300 group-hover:scale-[1.02]">
+                                    <img 
+                                        src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&color=047857&data=https://lavinap.vercel.app/"
+                                        alt="QR Canchas La Viña" 
+                                        className="w-36 h-36 object-contain"
+                                        onError={(e) => { e.target.src = "https://placehold.co/150x150/white/047857?text=La+Vina"; }}
+                                    />
+                                </div>
+
+                                <div className="bg-white/10 rounded-xl py-1.5 px-2.5 flex justify-center items-center mb-3 relative z-10 border border-white/5 hover:bg-white/20 transition-colors cursor-pointer"
+                                     onClick={() => window.open('https://lavinap.vercel.app/', '_blank')}>
+                                    <span className="text-xs font-bold text-[#a7f3d0] tracking-wide hover:underline flex items-center gap-1">
+                                        lavinap.vercel.app
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                        </svg>
+                                    </span>
+                                </div>
+
+                                <p className="text-[10px] text-white/80 text-center leading-relaxed relative z-10 font-medium">
+                                    ¡Separa tu cupo en tiempo real y comparte con tus amigos!
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

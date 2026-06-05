@@ -508,6 +508,53 @@ exports.deleteReservasRecurrentes = async (req, res) => {
     }
 };
 
+exports.deleteReservation = async (req, res) => {
+    const { id } = req.params;
+    const connection = await pool.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        // Obtener la reserva para validar su estado "utilizada" y los datos necesarios
+        const [reservaRows] = await connection.query('SELECT * FROM Reservas WHERE id = ?', [id]);
+        if (reservaRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Reserva no encontrada' });
+        }
+
+        const reserva = reservaRows[0];
+
+        // Si la reserva estaba marcada como Utilizada, descontar para ese cliente en las promociones según el servicio
+        if (reserva.utilizada) {
+            if (reserva.origen === 'Normal') {
+                const id_cliente = reserva.id_cliente;
+                const raw_servicio = reserva.id_servicio;
+                const servicio_promo = (raw_servicio === 2 || raw_servicio === 3) ? 2 : raw_servicio;
+
+                const [promos] = await connection.query('SELECT * FROM promociones WHERE clienteid = ? AND servicioid = ?', [id_cliente, servicio_promo]);
+                if (promos.length > 0) {
+                    const promo = promos[0];
+                    if (promo.cantidad_servicios > 0) {
+                        await connection.query('UPDATE promociones SET cantidad_servicios = cantidad_servicios - 1 WHERE id = ?', [promo.id]);
+                    }
+                }
+            }
+        }
+
+        // Eliminar la reserva para que el servicio quede habilitado
+        await connection.query('DELETE FROM Reservas WHERE id = ?', [id]);
+
+        await connection.commit();
+        res.json({ message: 'Reserva eliminada exitosamente y servicio habilitado.' });
+    } catch (error) {
+        await connection.rollback();
+        console.error('Error deleting reservation:', error);
+        res.status(500).json({ message: 'Error interno al eliminar la reserva' });
+    } finally {
+        connection.release();
+    }
+};
+
 exports.toggleUtilizada = async (req, res) => {
     const { id } = req.params;
     const { utilizada } = req.body;

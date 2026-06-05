@@ -750,6 +750,18 @@ const AdminDashboard = () => {
         }
     };
 
+    const deleteReservation = async (id) => {
+        if (!window.confirm('¿Está seguro de que desea eliminar esta reserva? Esta acción no se puede deshacer.')) return;
+        try {
+            const res = await axios.delete(`${API_URL}/admin/reservations/${id}`, { headers: getAuthHeaders() });
+            alert(res.data.message || 'Reserva eliminada con éxito y el servicio ha quedado habilitado.');
+            fetchReservations();
+            fetchPromociones();
+        } catch (err) {
+            alert(err.response?.data?.message || 'Error al eliminar la reserva.');
+        }
+    };
+
     const fetchPromociones = async () => {
         try {
             const res = await axios.get(`${API_URL}/admin/promociones`, { headers: getAuthHeaders() });
@@ -1358,24 +1370,33 @@ const AdminDashboard = () => {
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                    {reserva.estado === 'pendiente' && (
-                                                        <div className="flex justify-end gap-2">
-                                                            <button
-                                                                onClick={() => updateStatus(reserva.id, 'confirmado')} disabled={updatingStatusId === reserva.id}
-                                                                className={`text-green-600 hover:text-green-900 bg-green-50 p-2 rounded-full transition-colors ${updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                                title="Confirmar"
-                                                            >
-                                                                <CheckCircle size={20} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => updateStatus(reserva.id, 'cancelado')} disabled={updatingStatusId === reserva.id}
-                                                                className={`text-red-600 hover:text-red-900 bg-red-50 p-2 rounded-full transition-colors ${updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                                title="Cancelar"
-                                                            >
-                                                                <XCircle size={20} />
-                                                            </button>
-                                                        </div>
-                                                    )}
+                                                    <div className="flex justify-end gap-2">
+                                                        {reserva.estado === 'pendiente' && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => updateStatus(reserva.id, 'confirmado')} disabled={updatingStatusId === reserva.id}
+                                                                    className={`text-green-600 hover:text-green-900 bg-green-50 p-2 rounded-full transition-colors ${updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                                    title="Confirmar"
+                                                                >
+                                                                    <CheckCircle size={20} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => updateStatus(reserva.id, 'cancelado')} disabled={updatingStatusId === reserva.id}
+                                                                    className={`text-red-600 hover:text-red-900 bg-red-50 p-2 rounded-full transition-colors ${updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                                    title="Cancelar"
+                                                                >
+                                                                    <XCircle size={20} />
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                        <button
+                                                            onClick={() => deleteReservation(reserva.id)}
+                                                            className="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 p-2 rounded-full transition-colors"
+                                                            title="Eliminar reserva"
+                                                        >
+                                                            <Trash2 size={20} />
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))
