@@ -64,10 +64,13 @@ exports.updateReservationStatus = async (req, res) => {
                     const reserva = rows[0];
                     const fechaStr = typeof reserva.fecha === 'string'
                         ? reserva.fecha.split('T')[0]
-                        : new Date(reserva.fecha).toISOString().split('T')[0];
+                        : (reserva.fecha ? new Date(reserva.fecha).toISOString().split('T')[0] : '');
 
-                    const [year, month, day] = fechaStr.split('-');
-                    const formattedDateStr = `${day}/${month}/${year}`;
+                    const parts = fechaStr.split('-');
+                    const formattedDateStr = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : fechaStr;
+
+                    const startTimeStr = reserva.hora_inicio ? String(reserva.hora_inicio).substring(0, 5) : '';
+                    const endTimeStr = reserva.hora_fin ? String(reserva.hora_fin).substring(0, 5) : '';
 
                     // 1. Enviar Email si está activo
                     if (process.env.SEND_EMAIL === 'true' && dbEnviarEmail && reserva.cliente_correo) {
@@ -75,11 +78,11 @@ exports.updateReservationStatus = async (req, res) => {
                             sendConfirmationEmail({
                                 to: reserva.cliente_correo,
                                 fromEmail,
-                                clientName: reserva.cliente_nombre,
-                                serviceName: reserva.servicio_nombre,
+                                clientName: reserva.cliente_nombre || '',
+                                serviceName: reserva.servicio_nombre || '',
                                 date: fechaStr,
-                                startTime: reserva.hora_inicio.substring(0, 5),
-                                endTime: reserva.hora_fin.substring(0, 5)
+                                startTime: startTimeStr,
+                                endTime: endTimeStr
                             }).then(res => {
                                 console.log(`Email de confirmacion enviado: ${res.success}`);
                             }).catch(err => {
@@ -89,11 +92,11 @@ exports.updateReservationStatus = async (req, res) => {
                             sendCancellationEmail({
                                 to: reserva.cliente_correo,
                                 fromEmail,
-                                clientName: reserva.cliente_nombre,
-                                serviceName: reserva.servicio_nombre,
+                                clientName: reserva.cliente_nombre || '',
+                                serviceName: reserva.servicio_nombre || '',
                                 date: fechaStr,
-                                startTime: reserva.hora_inicio.substring(0, 5),
-                                endTime: reserva.hora_fin.substring(0, 5)
+                                startTime: startTimeStr,
+                                endTime: endTimeStr
                             }).then(res => {
                                 console.log(`Email de cancelacion enviado: ${res.success}`);
                             }).catch(err => {
@@ -104,30 +107,31 @@ exports.updateReservationStatus = async (req, res) => {
                     }
 
                     // 2. Enviar WhatsApp si está activo
-                    if (process.env.SEND_WHATSAPP === 'true' && dbEnviarWhatsapp && reserva.cliente_celular) {
+                    const phoneStr = reserva.cliente_celular ? String(reserva.cliente_celular) : '';
+                    if (process.env.SEND_WHATSAPP === 'true' && dbEnviarWhatsapp && phoneStr) {
                         const { sendWhatsAppMessage } = require('../services/whatsappService');
                         let text = '';
                         
                         if (estado === 'confirmado') {
                             text = `⚽ *¡Tu reserva ha sido confirmada!* 🏟️\n\n` +
-                                   `Hola *${reserva.cliente_nombre}*,\n` +
+                                   `Hola *${reserva.cliente_nombre || ''}*,\n` +
                                    `Nos complace informarte que tu reserva en *La Viña Canchas Sintéticas* ha sido aprobada:\n\n` +
-                                   `🏟️ *Cancha:* ${reserva.servicio_nombre}\n` +
+                                   `🏟️ *Cancha:* ${reserva.servicio_nombre || ''}\n` +
                                    `📅 *Fecha:* ${formattedDateStr}\n` +
-                                   `🕐 *Horario:* ${reserva.hora_inicio.substring(0, 5)} - ${reserva.hora_fin.substring(0, 5)}\n\n` +
+                                   `🕐 *Horario:* ${startTimeStr} - ${endTimeStr}\n\n` +
                                    `⏰ _Te recomendamos llegar 15 minutos antes. ¡Nos vemos en la cancha!_`;
                         } else if (estado === 'cancelado') {
                             text = `❌ *Reserva Cancelada / Rechazada* ⚽\n\n` +
-                                   `Hola *${reserva.cliente_nombre}*,\n` +
+                                   `Hola *${reserva.cliente_nombre || ''}*,\n` +
                                    `Te informamos que tu reserva en *La Viña Canchas Sintéticas* ha sido cancelada o no pudo ser confirmada por la administración:\n\n` +
-                                   `🏟️ *Cancha:* ${reserva.servicio_nombre}\n` +
+                                   `🏟️ *Cancha:* ${reserva.servicio_nombre || ''}\n` +
                                    `📅 *Fecha:* ${formattedDateStr}\n` +
-                                   `🕐 *Horario:* ${reserva.hora_inicio.substring(0, 5)} - ${reserva.hora_fin.substring(0, 5)}\n\n` +
+                                   `🕐 *Horario:* ${startTimeStr} - ${endTimeStr}\n\n` +
                                    `📞 _Si tienes dudas o quieres reagendar otro espacio, puedes comunicarte con nosotros._`;
                         }
 
                         if (text !== '') {
-                            sendWhatsAppMessage(reserva.cliente_celular, text).then(res => {
+                            sendWhatsAppMessage(phoneStr, text).then(res => {
                                 console.log(`WhatsApp de ${estado} enviado: ${res.success}`);
                             }).catch(err => {
                                 console.error(`Error enviando WhatsApp de ${estado}:`, err);

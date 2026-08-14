@@ -30,6 +30,7 @@ const Home = () => {
 
     const [currentDate, setCurrentDate] = useState(getLocalDateString());
     const [reservations, setReservations] = useState([]);
+    const [loadingReservations, setLoadingReservations] = useState(true);
 
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -129,11 +130,14 @@ const Home = () => {
     };
 
     const fetchReservations = async () => {
+        setLoadingReservations(true);
         try {
             const res = await axios.get(`${API_URL}/reservations?fecha=${currentDate}`);
             setReservations(res.data);
         } catch (err) {
             console.error('Error fetching reservations:', err);
+        } finally {
+            setLoadingReservations(false);
         }
     };
 
@@ -202,13 +206,16 @@ const Home = () => {
 
     // Helper to check if a specific cell slot is reserved or blocked
     const checkSlotStatus = (hour, servicioId) => {
-        const timeSlot = `${hour.toString().padStart(2, '0')}:00:00`;
+        const slotTime = `${hour.toString().padStart(2, '0')}:00`;
         let isReserved = false;
         let isBlocked = false;
 
         for (let r of reservations) {
             if (r.estado === 'cancelado') continue;
-            if (timeSlot >= r.hora_inicio && timeSlot < r.hora_fin) {
+            const start = (r.hora_inicio || '').substring(0, 5);
+            const end = (r.hora_fin || '').substring(0, 5);
+
+            if (start && end && slotTime >= start && slotTime < end) {
                 if (r.id_servicio === servicioId) {
                     isReserved = true;
                 }
@@ -561,43 +568,50 @@ const Home = () => {
                                         <div className="font-bold text-gray-800">Salón Eventos</div>
                                     </div>
 
-                                    {hours.map((hour) => {
-                                        const statusF8 = checkSlotStatus(hour, 1);
-                                        const statusF5A = checkSlotStatus(hour, 2);
-                                        const statusF5B = checkSlotStatus(hour, 3);
-                                        const statusSalon = checkSlotStatus(hour, 4);
+                                    {loadingReservations ? (
+                                        <div className="py-16 flex flex-col items-center justify-center gap-3">
+                                            <div className="w-10 h-10 border-4 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+                                            <p className="text-sm font-semibold text-gray-600 animate-pulse">Consultando disponibilidad en tiempo real...</p>
+                                        </div>
+                                    ) : (
+                                        hours.map((hour) => {
+                                            const statusF8 = checkSlotStatus(hour, 1);
+                                            const statusF5A = checkSlotStatus(hour, 2);
+                                            const statusF5B = checkSlotStatus(hour, 3);
+                                            const statusSalon = checkSlotStatus(hour, 4);
 
-                                        return (
-                                            <div key={hour} className="grid grid-cols-5 gap-2 mb-3 text-center items-center">
-                                                <div className="text-gray-500 font-medium">{hour.toString().padStart(2, '0')}:00</div>
+                                            return (
+                                                <div key={hour} className="grid grid-cols-5 gap-2 mb-3 text-center items-center">
+                                                    <div className="text-gray-500 font-medium">{hour.toString().padStart(2, '0')}:00</div>
 
-                                                {/* F8 */}
-                                                <div
-                                                    onClick={() => statusF8.status === 'free' && openBookingModal(hour, 1)}
-                                                    className={`py-2 rounded-md font-semibold text-sm transition-colors flex justify-center items-center gap-1 ${statusF8.class}`}>
-                                                    {statusF8.status === 'reserved' && <ShieldCheck size={14} />} {statusF8.label}
+                                                    {/* F8 */}
+                                                    <div
+                                                        onClick={() => statusF8.status === 'free' && openBookingModal(hour, 1)}
+                                                        className={`py-2 rounded-md font-semibold text-sm transition-colors flex justify-center items-center gap-1 ${statusF8.class}`}>
+                                                        {statusF8.status === 'reserved' && <ShieldCheck size={14} />} {statusF8.label}
+                                                    </div>
+                                                    {/* F5A */}
+                                                    <div
+                                                        onClick={() => statusF5A.status === 'free' && openBookingModal(hour, 2)}
+                                                        className={`py-2 rounded-md font-semibold text-sm transition-colors flex justify-center items-center gap-1 ${statusF5A.class}`}>
+                                                        {statusF5A.status === 'reserved' && <ShieldCheck size={14} />} {statusF5A.label}
+                                                    </div>
+                                                    {/* F5B */}
+                                                    <div
+                                                        onClick={() => statusF5B.status === 'free' && openBookingModal(hour, 3)}
+                                                        className={`py-2 rounded-md font-semibold text-sm transition-colors flex justify-center items-center gap-1 ${statusF5B.class}`}>
+                                                        {statusF5B.status === 'reserved' && <ShieldCheck size={14} />} {statusF5B.label}
+                                                    </div>
+                                                    {/* Salon */}
+                                                    <div
+                                                        onClick={() => statusSalon.status === 'free' && openBookingModal(hour, 4)}
+                                                        className={`py-2 rounded-md font-semibold text-sm transition-colors flex justify-center items-center gap-1 ${statusSalon.class}`}>
+                                                        {statusSalon.status === 'reserved' && <ShieldCheck size={14} />} {statusSalon.label}
+                                                    </div>
                                                 </div>
-                                                {/* F5A */}
-                                                <div
-                                                    onClick={() => statusF5A.status === 'free' && openBookingModal(hour, 2)}
-                                                    className={`py-2 rounded-md font-semibold text-sm transition-colors flex justify-center items-center gap-1 ${statusF5A.class}`}>
-                                                    {statusF5A.status === 'reserved' && <ShieldCheck size={14} />} {statusF5A.label}
-                                                </div>
-                                                {/* F5B */}
-                                                <div
-                                                    onClick={() => statusF5B.status === 'free' && openBookingModal(hour, 3)}
-                                                    className={`py-2 rounded-md font-semibold text-sm transition-colors flex justify-center items-center gap-1 ${statusF5B.class}`}>
-                                                    {statusF5B.status === 'reserved' && <ShieldCheck size={14} />} {statusF5B.label}
-                                                </div>
-                                                {/* Salon */}
-                                                <div
-                                                    onClick={() => statusSalon.status === 'free' && openBookingModal(hour, 4)}
-                                                    className={`py-2 rounded-md font-semibold text-sm transition-colors flex justify-center items-center gap-1 ${statusSalon.class}`}>
-                                                    {statusSalon.status === 'reserved' && <ShieldCheck size={14} />} {statusSalon.label}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                                            );
+                                        })
+                                    )}
                                 </div>
                             </div>
                         </div>

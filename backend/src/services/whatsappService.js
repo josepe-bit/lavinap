@@ -22,8 +22,11 @@ const sendWhatsAppMessage = async (to, text) => {
     }
 
     try {
+        if (!to) {
+            return { success: false, error: 'Invalid phone number' };
+        }
         // Limpiar el número eliminando todo lo que no sea dígito
-        let phone = to.replace(/\D/g, '');
+        let phone = String(to).replace(/\D/g, '');
         if (!phone) {
             return { success: false, error: 'Invalid phone number' };
         }

@@ -90,9 +90,15 @@ const AdminDashboard = () => {
     // Helper to format date safely without timezone offset issues
     const formatLocalDate = (dateVal) => {
         if (!dateVal) return '';
-        const dateStr = typeof dateVal === 'string' ? dateVal.split('T')[0] : new Date(dateVal).toISOString().split('T')[0];
-        const [year, month, day] = dateStr.split('-');
-        return new Date(year, month - 1, day).toLocaleDateString('es-CO');
+        try {
+            const dateStr = typeof dateVal === 'string' ? dateVal.split('T')[0] : new Date(dateVal).toISOString().split('T')[0];
+            const parts = dateStr.split('-');
+            if (parts.length !== 3) return String(dateVal);
+            const [year, month, day] = parts;
+            return new Date(Number(year), Number(month) - 1, Number(day)).toLocaleDateString('es-CO');
+        } catch (e) {
+            return String(dateVal);
+        }
     };
 
 
@@ -734,7 +740,8 @@ const AdminDashboard = () => {
             await axios.put(`${API_URL}/admin/reservations/${id}/status`, { estado: status }, { headers: getAuthHeaders() });
             setReservations(prev => prev.map(r => r.id === id ? { ...r, estado: status } : r));
         } catch (err) {
-            alert('Error actualizando el estado de la reserva');
+            console.error('Error actualizando el estado de la reserva:', err);
+            alert(err.response?.data?.message || 'Error actualizando el estado de la reserva');
         } finally {
             setUpdatingStatusId(null);
         }
@@ -1127,10 +1134,10 @@ const AdminDashboard = () => {
         const query = searchQueryClientes.toLowerCase().trim();
         if (!query) return true;
         return (
-            (c.nombre && c.nombre.toLowerCase().includes(query)) ||
-            (c.documento && c.documento.toLowerCase().includes(query)) ||
-            (c.celular && c.celular.toLowerCase().includes(query)) ||
-            (c.correo && c.correo.toLowerCase().includes(query))
+            (c.nombre && String(c.nombre).toLowerCase().includes(query)) ||
+            (c.documento && String(c.documento).toLowerCase().includes(query)) ||
+            (c.celular && String(c.celular).toLowerCase().includes(query)) ||
+            (c.correo && String(c.correo).toLowerCase().includes(query))
         );
     });
 
@@ -1142,12 +1149,12 @@ const AdminDashboard = () => {
         const fechaStr = formatLocalDate(r.fecha);
         
         return (
-            (r.cliente_nombre && r.cliente_nombre.toLowerCase().includes(query)) ||
-            (r.documento && r.documento.toLowerCase().includes(query)) ||
-            (r.celular && r.celular.toLowerCase().includes(query)) ||
-            (r.servicio_nombre && r.servicio_nombre.toLowerCase().includes(query)) ||
-            (r.estado && r.estado.toLowerCase().includes(query)) ||
-            (fechaStr && fechaStr.toLowerCase().includes(query))
+            (r.cliente_nombre && String(r.cliente_nombre).toLowerCase().includes(query)) ||
+            (r.documento && String(r.documento).toLowerCase().includes(query)) ||
+            (r.celular && String(r.celular).toLowerCase().includes(query)) ||
+            (r.servicio_nombre && String(r.servicio_nombre).toLowerCase().includes(query)) ||
+            (r.estado && String(r.estado).toLowerCase().includes(query)) ||
+            (fechaStr && String(fechaStr).toLowerCase().includes(query))
         );
     });
 
@@ -1158,8 +1165,8 @@ const AdminDashboard = () => {
         const servicioStr = p.servicioid == 1 ? 'fútbol 8' : 'fútbol 5';
         
         return (
-            (p.cliente_nombre && p.cliente_nombre.toLowerCase().includes(query)) ||
-            (p.cliente_documento && p.cliente_documento.toLowerCase().includes(query)) ||
+            (p.cliente_nombre && String(p.cliente_nombre).toLowerCase().includes(query)) ||
+            (p.cliente_documento && String(p.cliente_documento).toLowerCase().includes(query)) ||
             servicioStr.includes(query)
         );
     });
@@ -1332,7 +1339,7 @@ const AdminDashboard = () => {
                                                         {formatLocalDate(reserva.fecha)}
                                                     </div>
                                                     <div className="text-sm text-gray-500 mt-1">
-                                                        {reserva.hora_inicio.substring(0, 5)} - {reserva.hora_fin.substring(0, 5)}
+                                                        {reserva.hora_inicio ? String(reserva.hora_inicio).substring(0, 5) : ''} - {reserva.hora_fin ? String(reserva.hora_fin).substring(0, 5) : ''}
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
