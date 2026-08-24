@@ -530,7 +530,8 @@ exports.deleteReservation = async (req, res) => {
 
         // Si la reserva estaba marcada como Utilizada, descontar para ese cliente en las promociones según el servicio
         if (reserva.utilizada) {
-            if (reserva.origen === 'Normal') {
+            const origenVal = reserva.origen || 'Normal';
+            if (origenVal === 'Normal') {
                 const id_cliente = reserva.id_cliente;
                 const raw_servicio = reserva.id_servicio;
                 const servicio_promo = (raw_servicio === 2 || raw_servicio === 3) ? 2 : raw_servicio;
@@ -579,9 +580,10 @@ exports.toggleUtilizada = async (req, res) => {
 
         await connection.query('UPDATE Reservas SET utilizada = ? WHERE id = ?', [utilizada, id]);
 
+        const origenVal = reserva.origen || 'Normal';
         if (utilizada && !fueUtilizadaPreviamente) {
             // Only non-championship
-            if (reserva.origen === 'Normal') {
+            if (origenVal === 'Normal') {
                 const id_cliente = reserva.id_cliente;
                 const raw_servicio = reserva.id_servicio;
                 // Futbol 5 is 2 or 3, but in promociones we use 2
@@ -620,7 +622,7 @@ exports.toggleUtilizada = async (req, res) => {
             }
         } else if (!utilizada && fueUtilizadaPreviamente) {
             // If they un-check it, we should ideally decrement, but for simplicity we can just decrement if possible
-            if (reserva.origen === 'Normal') {
+            if (origenVal === 'Normal') {
                 const id_cliente = reserva.id_cliente;
                 const raw_servicio = reserva.id_servicio;
                 const servicio_promo = (raw_servicio === 2 || raw_servicio === 3) ? 2 : raw_servicio;

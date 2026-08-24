@@ -195,8 +195,12 @@ const AdminDashboard = () => {
     };
 
     const fetchReservations = async () => {
-        const res = await axios.get(`${API_URL}/admin/reservations`, { headers: getAuthHeaders() });
-        setReservations(res.data);
+        try {
+            const res = await axios.get(`${API_URL}/admin/reservations`, { headers: getAuthHeaders() });
+            setReservations(res.data || []);
+        } catch (err) {
+            console.error('Error fetching reservations:', err);
+        }
     };
 
     const fetchTarifas = async () => {
@@ -748,24 +752,32 @@ const AdminDashboard = () => {
     };
 
     const toggleUtilizada = async (id, currentValue) => {
+        setUpdatingStatusId(id);
         try {
             const newValue = !currentValue;
             await axios.put(`${API_URL}/admin/reservations/${id}/utilizada`, { utilizada: newValue }, { headers: getAuthHeaders() });
-            setReservations(reservations.map(r => r.id === id ? { ...r, utilizada: newValue } : r));
+            setReservations(prev => prev.map(r => r.id === id ? { ...r, utilizada: newValue } : r));
         } catch (err) {
-            alert('Error actualizando el estado de uso');
+            console.error('Error actualizando el estado de uso:', err);
+            alert(err.response?.data?.message || 'Error actualizando el estado de uso');
+        } finally {
+            setUpdatingStatusId(null);
         }
     };
 
     const deleteReservation = async (id) => {
         if (!window.confirm('¿Está seguro de que desea eliminar esta reserva? Esta acción no se puede deshacer.')) return;
+        setUpdatingStatusId(id);
         try {
             const res = await axios.delete(`${API_URL}/admin/reservations/${id}`, { headers: getAuthHeaders() });
             alert(res.data.message || 'Reserva eliminada con éxito y el servicio ha quedado habilitado.');
-            fetchReservations();
-            fetchPromociones();
+            await fetchReservations();
+            await fetchPromociones();
         } catch (err) {
+            console.error('Error al eliminar la reserva:', err);
             alert(err.response?.data?.message || 'Error al eliminar la reserva.');
+        } finally {
+            setUpdatingStatusId(null);
         }
     };
 
@@ -1354,51 +1366,67 @@ const AdminDashboard = () => {
                                                     <div className="text-xs font-semibold text-green-600 mt-1">Abono: ${Number(reserva.abono).toLocaleString('es-CO')}</div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    {reserva.estado === 'pendiente' && <span className="px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full bg-yellow-100 text-yellow-800">Pendiente</span>}
-                                                    {reserva.estado === 'confirmado' && <span className="px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full bg-green-100 text-green-800">Confirmado</span>}
-                                                    {reserva.estado === 'cancelado' && <span className="px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full bg-red-100 text-red-800">Cancelado</span>}
+                                                    <select
+                                                        value={reserva.estado}
+                                                        disabled={updatingStatusId === reserva.id}
+                                                        onChange={(e) => updateStatus(reserva.id, e.target.value)}
+                                                        className={`px-3 py-1 text-xs font-bold rounded-full border-0 ring-1 focus:ring-2 focus:ring-green-500 cursor-pointer shadow-sm ${
+                                                            reserva.estado === 'confirmado' ? 'bg-green-100 text-green-800 ring-green-300' :
+                                                            reserva.estado === 'cancelado' ? 'bg-red-100 text-red-800 ring-red-300' :
+                                                            'bg-yellow-100 text-yellow-800 ring-yellow-300'
+                                                        } ${updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        <option value="pendiente">⚡ Pendiente</option>
+                                                        <option value="confirmado">✓ Confirmado</option>
+                                                        <option value="cancelado">✕ Cancelado</option>
+                                                    </select>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-center">
-                                                    {reserva.estado === 'confirmado' && (
+                                                    {reserva.estado === 'confirmado' ? (
                                                         <button
                                                             onClick={() => toggleUtilizada(reserva.id, reserva.utilizada)}
+                                                            disabled={updatingStatusId === reserva.id}
                                                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
                                                                 reserva.utilizada
                                                                     ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 ring-1 ring-emerald-300'
                                                                     : 'bg-gray-100 text-gray-500 hover:bg-gray-200 ring-1 ring-gray-200'
-                                                            }`}
+                                                            } ${updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                             title={reserva.utilizada ? 'Marcar como no utilizada' : 'Marcar como utilizada'}
                                                         >
                                                             {reserva.utilizada ? <><Eye size={14} /> Utilizada</> : <><EyeOff size={14} /> No utilizada</>}
                                                         </button>
-                                                    )}
-                                                    {reserva.estado !== 'confirmado' && (
+                                                    ) : (
                                                         <span className="text-xs text-gray-400">—</span>
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                     <div className="flex justify-end gap-2">
-                                                        {reserva.estado === 'pendiente' && (
-                                                            <>
-                                                                <button
-                                                                    onClick={() => updateStatus(reserva.id, 'confirmado')} disabled={updatingStatusId === reserva.id}
-                                                                    className={`text-green-600 hover:text-green-900 bg-green-50 p-2 rounded-full transition-colors ${updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                                    title="Confirmar"
-                                                                >
-                                                                    <CheckCircle size={20} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => updateStatus(reserva.id, 'cancelado')} disabled={updatingStatusId === reserva.id}
-                                                                    className={`text-red-600 hover:text-red-900 bg-red-50 p-2 rounded-full transition-colors ${updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                                    title="Cancelar"
-                                                                >
-                                                                    <XCircle size={20} />
-                                                                </button>
-                                                            </>
-                                                        )}
+                                                        <button
+                                                            onClick={() => updateStatus(reserva.id, 'confirmado')}
+                                                            disabled={updatingStatusId === reserva.id || reserva.estado === 'confirmado'}
+                                                            className={`text-green-600 hover:text-green-900 bg-green-50 p-2 rounded-full transition-colors ${
+                                                                updatingStatusId === reserva.id || reserva.estado === 'confirmado' ? 'opacity-30 cursor-not-allowed' : 'hover:bg-green-100'
+                                                            }`}
+                                                            title="Confirmar reserva"
+                                                        >
+                                                            <CheckCircle size={20} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => updateStatus(reserva.id, 'cancelado')}
+                                                            disabled={updatingStatusId === reserva.id || reserva.estado === 'cancelado'}
+                                                            className={`text-red-600 hover:text-red-900 bg-red-50 p-2 rounded-full transition-colors ${
+                                                                updatingStatusId === reserva.id || reserva.estado === 'cancelado' ? 'opacity-30 cursor-not-allowed' : 'hover:bg-red-100'
+                                                            }`}
+                                                            title="Cancelar reserva"
+                                                        >
+                                                            <XCircle size={20} />
+                                                        </button>
                                                         <button
                                                             onClick={() => deleteReservation(reserva.id)}
-                                                            className="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 p-2 rounded-full transition-colors"
+                                                            disabled={updatingStatusId === reserva.id}
+                                                            className={`text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 p-2 rounded-full transition-colors ${
+                                                                updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''
+                                                            }`}
                                                             title="Eliminar reserva"
                                                         >
                                                             <Trash2 size={20} />
