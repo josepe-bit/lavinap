@@ -30,27 +30,71 @@ exports.getAllReservations = async (req, res) => {
 
 exports.updateReservationStatus = async (req, res) => {
     const { id } = req.params;
-    const { estado } = req.body; // 'confirmado' o 'cancelado'
+    const { estado } = req.body; // 'confirmado', 'cancelado', 'pendiente'
 
-    if (!['confirmado', 'cancelado', 'pendiente'].includes(estado)) {
-        return res.status(400).json({ message: 'Estado inválido' });
+    const validStates = ['pendiente', 'confirmado', 'cancelado'];
+    if (!validStates.includes(estado)) {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_STATUS',
+            message: 'Estado no permitido.'
+        });
     }
 
+    const connection = await pool.getConnection();
+
     try {
-        const [result] = await pool.query('UPDATE Reservas SET estado = ? WHERE id = ?', [estado, id]);
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Reserva no encontrada' });
+        await connection.beginTransaction();
+
+        // 1. SELECT ... FOR UPDATE para evitar condiciones de carrera y comprobar existencia
+        const [rows] = await connection.query(
+            'SELECT id, estado FROM Reservas WHERE id = ? FOR UPDATE',
+            [id]
+        );
+
+        if (rows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({
+                success: false,
+                code: 'RESERVATION_NOT_FOUND',
+                message: 'Reserva no encontrada.'
+            });
         }
-        // Si se confirma o cancela la reserva, enviar notificaciones al cliente
-        let emailSent = false;
+
+        const currentStatus = rows[0].estado;
+
+        // 2. Transiciones e Idempotencia
+        // Si el estado actual es igual al solicitado, se retorna 200 sin modificar la BD ni notificar
+        if (currentStatus === estado) {
+            await connection.rollback();
+            return res.status(200).json({
+                success: true,
+                code: 'ALREADY_IN_STATUS',
+                message: `La reserva ya se encontraba en estado ${estado}.`,
+                estado: currentStatus,
+                updated: false
+            });
+        }
+
+        // 3. Ejecutar UPDATE real
+        await connection.query(
+            'UPDATE Reservas SET estado = ? WHERE id = ?',
+            [estado, id]
+        );
+
+        // 4. COMMIT inmediato de la transacción de negocio
+        await connection.commit();
+
+        // 5. Notificaciones (POST-COMMIT) dentro de un bloque try/catch aislado
+        let notificationResults = { email: 'skipped', whatsapp: 'skipped' };
         if (estado === 'confirmado' || estado === 'cancelado') {
             try {
-                const [paramRows] = await pool.query('SELECT email_establecimiento, enviar_email, enviar_whatsapp FROM Parametros WHERE id = 1');
+                const [paramRows] = await pool.query('SELECT email_establecimiento, whatsapp_establecimiento, telefono_representante, enviar_email, enviar_whatsapp FROM Parametros WHERE id = 1');
                 const fromEmail = paramRows.length > 0 ? paramRows[0].email_establecimiento : null;
                 const dbEnviarEmail = paramRows.length > 0 ? (paramRows[0].enviar_email !== 0) : true;
                 const dbEnviarWhatsapp = paramRows.length > 0 ? (paramRows[0].enviar_whatsapp === 1) : false;
 
-                const [rows] = await pool.query(`
+                const [reservaInfo] = await pool.query(`
                     SELECT r.fecha, r.hora_inicio, r.hora_fin,
                            c.nombre AS cliente_nombre, c.correo AS cliente_correo, c.celular AS cliente_celular,
                            s.nombre AS servicio_nombre
@@ -60,8 +104,8 @@ exports.updateReservationStatus = async (req, res) => {
                     WHERE r.id = ?
                 `, [id]);
 
-                if (rows.length > 0) {
-                    const reserva = rows[0];
+                if (reservaInfo.length > 0) {
+                    const reserva = reservaInfo[0];
                     const fechaStr = typeof reserva.fecha === 'string'
                         ? reserva.fecha.split('T')[0]
                         : (reserva.fecha ? new Date(reserva.fecha).toISOString().split('T')[0] : '');
@@ -72,85 +116,110 @@ exports.updateReservationStatus = async (req, res) => {
                     const startTimeStr = reserva.hora_inicio ? String(reserva.hora_inicio).substring(0, 5) : '';
                     const endTimeStr = reserva.hora_fin ? String(reserva.hora_fin).substring(0, 5) : '';
 
-                    // 1. Enviar Email si está activo
+                    const promises = [];
+
+                    // 1. Correo al CLIENTE
                     if (process.env.SEND_EMAIL === 'true' && dbEnviarEmail && reserva.cliente_correo) {
-                        if (estado === 'confirmado') {
-                            sendConfirmationEmail({
-                                to: reserva.cliente_correo,
-                                fromEmail,
-                                clientName: reserva.cliente_nombre || '',
-                                serviceName: reserva.servicio_nombre || '',
-                                date: fechaStr,
-                                startTime: startTimeStr,
-                                endTime: endTimeStr
-                            }).then(res => {
-                                console.log(`Email de confirmacion enviado: ${res.success}`);
-                            }).catch(err => {
-                                console.error('Error enviando email de confirmacion:', err);
-                            });
-                        } else if (estado === 'cancelado') {
-                            sendCancellationEmail({
-                                to: reserva.cliente_correo,
-                                fromEmail,
-                                clientName: reserva.cliente_nombre || '',
-                                serviceName: reserva.servicio_nombre || '',
-                                date: fechaStr,
-                                startTime: startTimeStr,
-                                endTime: endTimeStr
-                            }).then(res => {
-                                console.log(`Email de cancelacion enviado: ${res.success}`);
-                            }).catch(err => {
-                                console.error('Error enviando email de cancelacion:', err);
-                            });
-                        }
-                        emailSent = true;
+                        const emailTask = (async () => {
+                            if (estado === 'confirmado') {
+                                return await sendConfirmationEmail({
+                                    to: reserva.cliente_correo,
+                                    fromEmail,
+                                    clientName: reserva.cliente_nombre || '',
+                                    serviceName: reserva.servicio_nombre || '',
+                                    date: fechaStr,
+                                    startTime: startTimeStr,
+                                    endTime: endTimeStr
+                                });
+                            } else if (estado === 'cancelado') {
+                                return await sendCancellationEmail({
+                                    to: reserva.cliente_correo,
+                                    fromEmail,
+                                    clientName: reserva.cliente_nombre || '',
+                                    serviceName: reserva.servicio_nombre || '',
+                                    date: fechaStr,
+                                    startTime: startTimeStr,
+                                    endTime: endTimeStr
+                                });
+                            }
+                        })();
+                        promises.push(emailTask.then(r => ({ type: 'email', res: r })).catch(e => ({ type: 'email', error: e.message })));
                     }
 
-                    // 2. Enviar WhatsApp si está activo
-                    const phoneStr = reserva.cliente_celular ? String(reserva.cliente_celular) : '';
-                    if (process.env.SEND_WHATSAPP === 'true' && dbEnviarWhatsapp && phoneStr) {
+                    // 2. WhatsApp a DESTINATARIOS INTERNOS (Establecimiento / Representante) - EL CLIENTE NO RECIBE WHATSAPP
+                    const rawPhones = paramRows.length > 0 ? [
+                        paramRows[0].whatsapp_establecimiento,
+                        paramRows[0].telefono_representante
+                    ] : [];
+
+                    const targetPhones = Array.from(new Set(
+                        rawPhones
+                            .filter(p => p && String(p).trim() !== '')
+                            .map(p => String(p).replace(/\D/g, ''))
+                            .filter(p => p.length >= 7)
+                    ));
+
+                    if (process.env.SEND_WHATSAPP === 'true' && dbEnviarWhatsapp && targetPhones.length > 0) {
                         const { sendWhatsAppMessage } = require('../services/whatsappService');
                         let text = '';
-                        
+
                         if (estado === 'confirmado') {
-                            text = `⚽ *¡Tu reserva ha sido confirmada!* 🏟️\n\n` +
-                                   `Hola *${reserva.cliente_nombre || ''}*,\n` +
-                                   `Nos complace informarte que tu reserva en *La Viña Canchas Sintéticas* ha sido aprobada:\n\n` +
+                            text = `⚽ *Notificación de Reserva Confirmada* 🏟️\n\n` +
+                                   `Se ha confirmado una reserva en *La Viña Canchas Sintéticas*:\n\n` +
+                                   `👤 *Cliente:* ${reserva.cliente_nombre || ''}\n` +
                                    `🏟️ *Cancha:* ${reserva.servicio_nombre || ''}\n` +
                                    `📅 *Fecha:* ${formattedDateStr}\n` +
-                                   `🕐 *Horario:* ${startTimeStr} - ${endTimeStr}\n\n` +
-                                   `⏰ _Te recomendamos llegar 15 minutos antes. ¡Nos vemos en la cancha!_`;
+                                   `🕐 *Horario:* ${startTimeStr} - ${endTimeStr}`;
                         } else if (estado === 'cancelado') {
-                            text = `❌ *Reserva Cancelada / Rechazada* ⚽\n\n` +
-                                   `Hola *${reserva.cliente_nombre || ''}*,\n` +
-                                   `Te informamos que tu reserva en *La Viña Canchas Sintéticas* ha sido cancelada o no pudo ser confirmada por la administración:\n\n` +
+                            text = `❌ *Notificación de Reserva Cancelada* ⚽\n\n` +
+                                   `Se ha cancelado una reserva en *La Viña Canchas Sintéticas*:\n\n` +
+                                   `👤 *Cliente:* ${reserva.cliente_nombre || ''}\n` +
                                    `🏟️ *Cancha:* ${reserva.servicio_nombre || ''}\n` +
                                    `📅 *Fecha:* ${formattedDateStr}\n` +
-                                   `🕐 *Horario:* ${startTimeStr} - ${endTimeStr}\n\n` +
-                                   `📞 _Si tienes dudas o quieres reagendar otro espacio, puedes comunicarte con nosotros._`;
+                                   `🕐 *Horario:* ${startTimeStr} - ${endTimeStr}`;
                         }
 
                         if (text !== '') {
-                            sendWhatsAppMessage(phoneStr, text).then(res => {
-                                console.log(`WhatsApp de ${estado} enviado: ${res.success}`);
-                            }).catch(err => {
-                                console.error(`Error enviando WhatsApp de ${estado}:`, err);
+                            targetPhones.forEach(phone => {
+                                const waTask = sendWhatsAppMessage(phone, text);
+                                promises.push(waTask.then(r => ({ type: 'whatsapp', res: r })).catch(e => ({ type: 'whatsapp', error: e.message })));
                             });
                         }
                     }
+
+                    if (promises.length > 0) {
+                        const results = await Promise.allSettled(promises);
+                        results.forEach(item => {
+                            if (item.status === 'fulfilled' && item.value) {
+                                notificationResults[item.value.type] = item.value.res || item.value.error || 'done';
+                            }
+                        });
+                    }
                 }
             } catch (notificationError) {
-                console.error(`Error al procesar notificaciones de ${estado}:`, notificationError);
+                console.error(`Error no bloqueante en notificaciones de ${estado}:`, notificationError);
             }
         }
 
-        res.json({
+        return res.status(200).json({
+            success: true,
+            code: 'RESERVATION_UPDATED',
             message: `Reserva actualizada a ${estado}`,
-            emailSent
+            estado: estado,
+            updated: true,
+            notifications: notificationResults
         });
+
     } catch (error) {
-        console.error('Error updating reservation:', error);
-        res.status(500).json({ message: 'Error interno del servidor' });
+        await connection.rollback();
+        console.error('Error updating reservation status:', error);
+        return res.status(500).json({
+            success: false,
+            code: 'INTERNAL_ERROR',
+            message: 'Error interno del servidor'
+        });
+    } finally {
+        connection.release();
     }
 };
 
@@ -1221,7 +1290,7 @@ const sendFechasEmailWrapper = async (req, res, sendFunc, typeStr, isProgramacio
             return res.status(500).json({ message: 'Error al enviar ' + typeStr + (result?.error ? ': ' + result.error : '') });
         }
 
-        // --- ENVÍO DE WHATSAPP ---
+        // --- ENVÍO DE WHATSAPP A DESTINATARIOS INTERNOS (ESTABLECIMIENTO Y REPRESENTANTE) ---
         const dbEnviarWhatsapp = pa.enviar_whatsapp === 1;
         const shouldSendWhatsapp = process.env.SEND_WHATSAPP === 'true' && dbEnviarWhatsapp;
         let whatsappSentCount = 0;
@@ -1230,14 +1299,20 @@ const sendFechasEmailWrapper = async (req, res, sendFunc, typeStr, isProgramacio
         if (shouldSendWhatsapp) {
             const { sendWhatsAppMessage } = require('../services/whatsappService');
             
-            // Recopilar celulares únicos de delegados
-            const celulares = new Set();
-            partidos.forEach(p => {
-                if (p.celular_local && p.celular_local.trim()) celulares.add(p.celular_local.trim());
-                if (p.celular_vis && p.celular_vis.trim()) celulares.add(p.celular_vis.trim());
-            });
+            // Recopilar celulares únicos de destinatarios internos en Parámetros (ELIMINADO USO DE DELEGADOS)
+            const rawPhones = [
+                pa.whatsapp_establecimiento,
+                pa.telefono_representante
+            ];
 
-            if (celulares.size > 0) {
+            const targetPhones = Array.from(new Set(
+                rawPhones
+                    .filter(p => p && String(p).trim() !== '')
+                    .map(p => String(p).replace(/\D/g, ''))
+                    .filter(p => p.length >= 7)
+            ));
+
+            if (targetPhones.length > 0) {
                 // Formatear la fecha para WhatsApp
                 const formattedDate = typeof fecha === 'string'
                     ? fecha.split('T')[0]
@@ -1275,19 +1350,18 @@ const sendFechasEmailWrapper = async (req, res, sendFunc, typeStr, isProgramacio
                     msg += `\n📈 _Tabla de posiciones actualizada en el panel de control._`;
                 }
 
-                for (const celular of celulares) {
-                    try {
-                        const waRes = await sendWhatsAppMessage(celular, msg);
-                        if (waRes.success) {
-                            whatsappSentCount++;
-                        } else {
-                            whatsappError = waRes.error;
-                        }
-                    } catch (err) {
-                        console.error('Error al enviar WhatsApp:', err);
-                        whatsappError = err.message;
+                const waPromises = targetPhones.map(phone => sendWhatsAppMessage(phone, msg));
+                const waResults = await Promise.allSettled(waPromises);
+
+                waResults.forEach(res => {
+                    if (res.status === 'fulfilled' && res.value?.success) {
+                        whatsappSentCount++;
+                    } else if (res.status === 'fulfilled' && res.value?.error) {
+                        whatsappError = res.value.error;
+                    } else if (res.status === 'rejected') {
+                        whatsappError = res.reason?.message || res.reason;
                     }
-                }
+                });
             }
         }
 

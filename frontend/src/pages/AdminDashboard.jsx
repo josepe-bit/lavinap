@@ -7,7 +7,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const AdminDashboard = () => {
     const [activeTab, setActiveTab] = useState('reservas');
-    const [updatingStatusId, setUpdatingStatusId] = useState(null);
+    const [updatingStatusIds, setUpdatingStatusIds] = useState(new Set());
     const [openCategories, setOpenCategories] = useState({ canchas: true, campeonatos: false, utilidades: false });
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [reservations, setReservations] = useState([]);
@@ -739,37 +739,58 @@ const AdminDashboard = () => {
     };
 
     const updateStatus = async (id, status) => {
-        setUpdatingStatusId(id);
+        if (updatingStatusIds.has(id)) return;
+
+        setUpdatingStatusIds(prev => new Set(prev).add(id));
         try {
-            await axios.put(`${API_URL}/admin/reservations/${id}/status`, { estado: status }, { headers: getAuthHeaders() });
-            setReservations(prev => prev.map(r => r.id === id ? { ...r, estado: status } : r));
+            const res = await axios.put(
+                `${API_URL}/admin/reservations/${id}/status`,
+                { estado: status },
+                { headers: getAuthHeaders(), timeout: 15000 }
+            );
+            if (res.data?.success || res.status === 200) {
+                setReservations(prev => prev.map(r => r.id === id ? { ...r, estado: status } : r));
+            }
         } catch (err) {
             console.error('Error actualizando el estado de la reserva:', err);
-            alert(err.response?.data?.message || 'Error actualizando el estado de la reserva');
+            const msg = err.response?.data?.message || (err.code === 'ECONNABORTED' ? 'Tiempo de espera agotado (Timeout)' : 'Error actualizando el estado de la reserva');
+            alert(msg);
         } finally {
-            setUpdatingStatusId(null);
+            await fetchReservations();
+            setUpdatingStatusIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
         }
     };
 
     const toggleUtilizada = async (id, currentValue) => {
-        setUpdatingStatusId(id);
+        if (updatingStatusIds.has(id)) return;
+        setUpdatingStatusIds(prev => new Set(prev).add(id));
         try {
             const newValue = !currentValue;
-            await axios.put(`${API_URL}/admin/reservations/${id}/utilizada`, { utilizada: newValue }, { headers: getAuthHeaders() });
+            await axios.put(`${API_URL}/admin/reservations/${id}/utilizada`, { utilizada: newValue }, { headers: getAuthHeaders(), timeout: 15000 });
             setReservations(prev => prev.map(r => r.id === id ? { ...r, utilizada: newValue } : r));
         } catch (err) {
             console.error('Error actualizando el estado de uso:', err);
             alert(err.response?.data?.message || 'Error actualizando el estado de uso');
         } finally {
-            setUpdatingStatusId(null);
+            await fetchReservations();
+            setUpdatingStatusIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
         }
     };
 
     const deleteReservation = async (id) => {
+        if (updatingStatusIds.has(id)) return;
         if (!window.confirm('¿Está seguro de que desea eliminar esta reserva? Esta acción no se puede deshacer.')) return;
-        setUpdatingStatusId(id);
+        setUpdatingStatusIds(prev => new Set(prev).add(id));
         try {
-            const res = await axios.delete(`${API_URL}/admin/reservations/${id}`, { headers: getAuthHeaders() });
+            const res = await axios.delete(`${API_URL}/admin/reservations/${id}`, { headers: getAuthHeaders(), timeout: 15000 });
             alert(res.data.message || 'Reserva eliminada con éxito y el servicio ha quedado habilitado.');
             await fetchReservations();
             await fetchPromociones();
@@ -777,7 +798,12 @@ const AdminDashboard = () => {
             console.error('Error al eliminar la reserva:', err);
             alert(err.response?.data?.message || 'Error al eliminar la reserva.');
         } finally {
-            setUpdatingStatusId(null);
+            await fetchReservations();
+            setUpdatingStatusIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
         }
     };
 
@@ -1368,13 +1394,13 @@ const AdminDashboard = () => {
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <select
                                                         value={reserva.estado}
-                                                        disabled={updatingStatusId === reserva.id}
+                                                        disabled={updatingStatusIds.has(reserva.id)}
                                                         onChange={(e) => updateStatus(reserva.id, e.target.value)}
                                                         className={`px-3 py-1 text-xs font-bold rounded-full border-0 ring-1 focus:ring-2 focus:ring-green-500 cursor-pointer shadow-sm ${
                                                             reserva.estado === 'confirmado' ? 'bg-green-100 text-green-800 ring-green-300' :
                                                             reserva.estado === 'cancelado' ? 'bg-red-100 text-red-800 ring-red-300' :
                                                             'bg-yellow-100 text-yellow-800 ring-yellow-300'
-                                                        } ${updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                        } ${updatingStatusIds.has(reserva.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                     >
                                                         <option value="pendiente">⚡ Pendiente</option>
                                                         <option value="confirmado">✓ Confirmado</option>
@@ -1385,12 +1411,12 @@ const AdminDashboard = () => {
                                                     {reserva.estado === 'confirmado' ? (
                                                         <button
                                                             onClick={() => toggleUtilizada(reserva.id, reserva.utilizada)}
-                                                            disabled={updatingStatusId === reserva.id}
+                                                            disabled={updatingStatusIds.has(reserva.id)}
                                                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
                                                                 reserva.utilizada
                                                                     ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 ring-1 ring-emerald-300'
                                                                     : 'bg-gray-100 text-gray-500 hover:bg-gray-200 ring-1 ring-gray-200'
-                                                            } ${updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                            } ${updatingStatusIds.has(reserva.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                             title={reserva.utilizada ? 'Marcar como no utilizada' : 'Marcar como utilizada'}
                                                         >
                                                             {reserva.utilizada ? <><Eye size={14} /> Utilizada</> : <><EyeOff size={14} /> No utilizada</>}
@@ -1403,9 +1429,9 @@ const AdminDashboard = () => {
                                                     <div className="flex justify-end gap-2">
                                                         <button
                                                             onClick={() => updateStatus(reserva.id, 'confirmado')}
-                                                            disabled={updatingStatusId === reserva.id || reserva.estado === 'confirmado'}
+                                                            disabled={updatingStatusIds.has(reserva.id) || reserva.estado === 'confirmado'}
                                                             className={`text-green-600 hover:text-green-900 bg-green-50 p-2 rounded-full transition-colors ${
-                                                                updatingStatusId === reserva.id || reserva.estado === 'confirmado' ? 'opacity-30 cursor-not-allowed' : 'hover:bg-green-100'
+                                                                updatingStatusIds.has(reserva.id) || reserva.estado === 'confirmado' ? 'opacity-30 cursor-not-allowed' : 'hover:bg-green-100'
                                                             }`}
                                                             title="Confirmar reserva"
                                                         >
@@ -1413,9 +1439,9 @@ const AdminDashboard = () => {
                                                         </button>
                                                         <button
                                                             onClick={() => updateStatus(reserva.id, 'cancelado')}
-                                                            disabled={updatingStatusId === reserva.id || reserva.estado === 'cancelado'}
+                                                            disabled={updatingStatusIds.has(reserva.id) || reserva.estado === 'cancelado'}
                                                             className={`text-red-600 hover:text-red-900 bg-red-50 p-2 rounded-full transition-colors ${
-                                                                updatingStatusId === reserva.id || reserva.estado === 'cancelado' ? 'opacity-30 cursor-not-allowed' : 'hover:bg-red-100'
+                                                                updatingStatusIds.has(reserva.id) || reserva.estado === 'cancelado' ? 'opacity-30 cursor-not-allowed' : 'hover:bg-red-100'
                                                             }`}
                                                             title="Cancelar reserva"
                                                         >
@@ -1423,9 +1449,9 @@ const AdminDashboard = () => {
                                                         </button>
                                                         <button
                                                             onClick={() => deleteReservation(reserva.id)}
-                                                            disabled={updatingStatusId === reserva.id}
+                                                            disabled={updatingStatusIds.has(reserva.id)}
                                                             className={`text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 p-2 rounded-full transition-colors ${
-                                                                updatingStatusId === reserva.id ? 'opacity-50 cursor-not-allowed' : ''
+                                                                updatingStatusIds.has(reserva.id) ? 'opacity-50 cursor-not-allowed' : ''
                                                             }`}
                                                             title="Eliminar reserva"
                                                         >
