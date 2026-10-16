@@ -41,9 +41,11 @@ exports.updateReservationStatus = async (req, res) => {
         });
     }
 
-    const connection = await pool.getConnection();
+    let connection = null;
+    let notificationPayload = null;
 
     try {
+        connection = await pool.getConnection();
         await connection.beginTransaction();
 
         // 1. SELECT ... FOR UPDATE para evitar condiciones de carrera y comprobar existencia
@@ -54,6 +56,8 @@ exports.updateReservationStatus = async (req, res) => {
 
         if (rows.length === 0) {
             await connection.rollback();
+            connection.release();
+            connection = null;
             return res.status(404).json({
                 success: false,
                 code: 'RESERVATION_NOT_FOUND',
@@ -67,6 +71,8 @@ exports.updateReservationStatus = async (req, res) => {
         // Si el estado actual es igual al solicitado, se retorna 200 sin modificar la BD ni notificar
         if (currentStatus === estado) {
             await connection.rollback();
+            connection.release();
+            connection = null;
             return res.status(200).json({
                 success: true,
                 code: 'ALREADY_IN_STATUS',
@@ -82,145 +88,165 @@ exports.updateReservationStatus = async (req, res) => {
             [estado, id]
         );
 
-        // 4. COMMIT inmediato de la transacción de negocio
-        await connection.commit();
-
-        // 5. Notificaciones (POST-COMMIT) dentro de un bloque try/catch aislado
-        let notificationResults = { email: 'skipped', whatsapp: 'skipped' };
+        // 4. Si requiere notificaciones, recopilar datos con la conexión dedicada actual antes de liberarla
         if (estado === 'confirmado' || estado === 'cancelado') {
-            try {
-                const [paramRows] = await pool.query('SELECT email_establecimiento, whatsapp_establecimiento, telefono_representante, enviar_email, enviar_whatsapp FROM Parametros WHERE id = 1');
-                const fromEmail = paramRows.length > 0 ? paramRows[0].email_establecimiento : null;
-                const dbEnviarEmail = paramRows.length > 0 ? (paramRows[0].enviar_email !== 0) : true;
-                const dbEnviarWhatsapp = paramRows.length > 0 ? (paramRows[0].enviar_whatsapp === 1) : false;
+            const [paramRows] = await connection.query(
+                'SELECT email_establecimiento, whatsapp_establecimiento, telefono_representante, enviar_email, enviar_whatsapp FROM Parametros WHERE id = 1'
+            );
+            const [reservaInfo] = await connection.query(`
+                SELECT r.fecha, r.hora_inicio, r.hora_fin,
+                       c.nombre AS cliente_nombre, c.correo AS cliente_correo, c.celular AS cliente_celular,
+                       s.nombre AS servicio_nombre
+                FROM Reservas r
+                JOIN Clientes c ON r.id_cliente = c.id
+                JOIN Servicios s ON r.id_servicio = s.id
+                WHERE r.id = ?
+            `, [id]);
 
-                const [reservaInfo] = await pool.query(`
-                    SELECT r.fecha, r.hora_inicio, r.hora_fin,
-                           c.nombre AS cliente_nombre, c.correo AS cliente_correo, c.celular AS cliente_celular,
-                           s.nombre AS servicio_nombre
-                    FROM Reservas r
-                    JOIN Clientes c ON r.id_cliente = c.id
-                    JOIN Servicios s ON r.id_servicio = s.id
-                    WHERE r.id = ?
-                `, [id]);
-
-                if (reservaInfo.length > 0) {
-                    const reserva = reservaInfo[0];
-                    const fechaStr = typeof reserva.fecha === 'string'
-                        ? reserva.fecha.split('T')[0]
-                        : (reserva.fecha ? new Date(reserva.fecha).toISOString().split('T')[0] : '');
-
-                    const parts = fechaStr.split('-');
-                    const formattedDateStr = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : fechaStr;
-
-                    const startTimeStr = reserva.hora_inicio ? String(reserva.hora_inicio).substring(0, 5) : '';
-                    const endTimeStr = reserva.hora_fin ? String(reserva.hora_fin).substring(0, 5) : '';
-
-                    const promises = [];
-
-                    // 1. Correo al CLIENTE
-                    if (process.env.SEND_EMAIL === 'true' && dbEnviarEmail && reserva.cliente_correo) {
-                        const emailTask = (async () => {
-                            if (estado === 'confirmado') {
-                                return await sendConfirmationEmail({
-                                    to: reserva.cliente_correo,
-                                    fromEmail,
-                                    clientName: reserva.cliente_nombre || '',
-                                    serviceName: reserva.servicio_nombre || '',
-                                    date: fechaStr,
-                                    startTime: startTimeStr,
-                                    endTime: endTimeStr
-                                });
-                            } else if (estado === 'cancelado') {
-                                return await sendCancellationEmail({
-                                    to: reserva.cliente_correo,
-                                    fromEmail,
-                                    clientName: reserva.cliente_nombre || '',
-                                    serviceName: reserva.servicio_nombre || '',
-                                    date: fechaStr,
-                                    startTime: startTimeStr,
-                                    endTime: endTimeStr
-                                });
-                            }
-                        })();
-                        promises.push(emailTask.then(r => ({ type: 'email', res: r })).catch(e => ({ type: 'email', error: e.message })));
-                    }
-
-                    // 2. WhatsApp a DESTINATARIOS INTERNOS (Establecimiento / Representante) - EL CLIENTE NO RECIBE WHATSAPP
-                    const rawPhones = paramRows.length > 0 ? [
-                        paramRows[0].whatsapp_establecimiento,
-                        paramRows[0].telefono_representante
-                    ] : [];
-
-                    const targetPhones = Array.from(new Set(
-                        rawPhones
-                            .filter(p => p && String(p).trim() !== '')
-                            .map(p => String(p).replace(/\D/g, ''))
-                            .filter(p => p.length >= 7)
-                    ));
-
-                    if (process.env.SEND_WHATSAPP === 'true' && dbEnviarWhatsapp && targetPhones.length > 0) {
-                        const { sendWhatsAppMessage } = require('../services/whatsappService');
-                        let text = '';
-
-                        if (estado === 'confirmado') {
-                            text = `⚽ *Notificación de Reserva Confirmada* 🏟️\n\n` +
-                                   `Se ha confirmado una reserva en *La Viña Canchas Sintéticas*:\n\n` +
-                                   `👤 *Cliente:* ${reserva.cliente_nombre || ''}\n` +
-                                   `🏟️ *Cancha:* ${reserva.servicio_nombre || ''}\n` +
-                                   `📅 *Fecha:* ${formattedDateStr}\n` +
-                                   `🕐 *Horario:* ${startTimeStr} - ${endTimeStr}`;
-                        } else if (estado === 'cancelado') {
-                            text = `❌ *Notificación de Reserva Cancelada* ⚽\n\n` +
-                                   `Se ha cancelado una reserva en *La Viña Canchas Sintéticas*:\n\n` +
-                                   `👤 *Cliente:* ${reserva.cliente_nombre || ''}\n` +
-                                   `🏟️ *Cancha:* ${reserva.servicio_nombre || ''}\n` +
-                                   `📅 *Fecha:* ${formattedDateStr}\n` +
-                                   `🕐 *Horario:* ${startTimeStr} - ${endTimeStr}`;
-                        }
-
-                        if (text !== '') {
-                            targetPhones.forEach(phone => {
-                                const waTask = sendWhatsAppMessage(phone, text);
-                                promises.push(waTask.then(r => ({ type: 'whatsapp', res: r })).catch(e => ({ type: 'whatsapp', error: e.message })));
-                            });
-                        }
-                    }
-
-                    if (promises.length > 0) {
-                        const results = await Promise.allSettled(promises);
-                        results.forEach(item => {
-                            if (item.status === 'fulfilled' && item.value) {
-                                notificationResults[item.value.type] = item.value.res || item.value.error || 'done';
-                            }
-                        });
-                    }
-                }
-            } catch (notificationError) {
-                console.error(`Error no bloqueante en notificaciones de ${estado}:`, notificationError);
+            if (reservaInfo.length > 0) {
+                notificationPayload = {
+                    paramRows,
+                    reserva: reservaInfo[0]
+                };
             }
         }
 
-        return res.status(200).json({
-            success: true,
-            code: 'RESERVATION_UPDATED',
-            message: `Reserva actualizada a ${estado}`,
-            estado: estado,
-            updated: true,
-            notifications: notificationResults
-        });
+        // 5. COMMIT de la transacción de negocio
+        await connection.commit();
+
+        // 6. LIBERACIÓN INMEDIATA de la conexión para no retenerla durante I/O externo
+        connection.release();
+        connection = null;
 
     } catch (error) {
-        await connection.rollback();
+        if (connection) {
+            try {
+                await connection.rollback();
+            } catch (rbError) {
+                console.error('Error durante rollback en updateReservationStatus:', rbError);
+            }
+            connection.release();
+            connection = null;
+        }
         console.error('Error updating reservation status:', error);
         return res.status(500).json({
             success: false,
             code: 'INTERNAL_ERROR',
             message: 'Error interno del servidor'
         });
-    } finally {
-        connection.release();
     }
+
+    // 7. Notificaciones (POST-COMMIT y con conexión de base de datos ya devuelta al pool)
+    let notificationResults = { email: 'skipped', whatsapp: 'skipped' };
+    if ((estado === 'confirmado' || estado === 'cancelado') && notificationPayload) {
+        try {
+            const { paramRows, reserva } = notificationPayload;
+            const fromEmail = paramRows.length > 0 ? paramRows[0].email_establecimiento : null;
+            const dbEnviarEmail = paramRows.length > 0 ? (paramRows[0].enviar_email !== 0) : true;
+            const dbEnviarWhatsapp = paramRows.length > 0 ? (paramRows[0].enviar_whatsapp === 1) : false;
+
+            const fechaStr = typeof reserva.fecha === 'string'
+                ? reserva.fecha.split('T')[0]
+                : (reserva.fecha ? new Date(reserva.fecha).toISOString().split('T')[0] : '');
+
+            const parts = fechaStr.split('-');
+            const formattedDateStr = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : fechaStr;
+
+            const startTimeStr = reserva.hora_inicio ? String(reserva.hora_inicio).substring(0, 5) : '';
+            const endTimeStr = reserva.hora_fin ? String(reserva.hora_fin).substring(0, 5) : '';
+
+            const promises = [];
+
+            // 1. Correo al CLIENTE
+            if (process.env.SEND_EMAIL === 'true' && dbEnviarEmail && reserva.cliente_correo) {
+                const emailTask = (async () => {
+                    if (estado === 'confirmado') {
+                        return await sendConfirmationEmail({
+                            to: reserva.cliente_correo,
+                            fromEmail,
+                            clientName: reserva.cliente_nombre || '',
+                            serviceName: reserva.servicio_nombre || '',
+                            date: fechaStr,
+                            startTime: startTimeStr,
+                            endTime: endTimeStr
+                        });
+                    } else if (estado === 'cancelado') {
+                        return await sendCancellationEmail({
+                            to: reserva.cliente_correo,
+                            fromEmail,
+                            clientName: reserva.cliente_nombre || '',
+                            serviceName: reserva.servicio_nombre || '',
+                            date: fechaStr,
+                            startTime: startTimeStr,
+                            endTime: endTimeStr
+                        });
+                    }
+                })();
+                promises.push(emailTask.then(r => ({ type: 'email', res: r })).catch(e => ({ type: 'email', error: e.message })));
+            }
+
+            // 2. WhatsApp a DESTINATARIOS INTERNOS (Establecimiento / Representante)
+            const rawPhones = paramRows.length > 0 ? [
+                paramRows[0].whatsapp_establecimiento,
+                paramRows[0].telefono_representante
+            ] : [];
+
+            const targetPhones = Array.from(new Set(
+                rawPhones
+                    .filter(p => p && String(p).trim() !== '')
+                    .map(p => String(p).replace(/\D/g, ''))
+                    .filter(p => p.length >= 7)
+            ));
+
+            if (process.env.SEND_WHATSAPP === 'true' && dbEnviarWhatsapp && targetPhones.length > 0) {
+                const { sendWhatsAppMessage } = require('../services/whatsappService');
+                let text = '';
+
+                if (estado === 'confirmado') {
+                    text = `⚽ *Notificación de Reserva Confirmada* 🏟️\n\n` +
+                           `Se ha confirmado una reserva en *La Viña Canchas Sintéticas*:\n\n` +
+                           `👤 *Cliente:* ${reserva.cliente_nombre || ''}\n` +
+                           `🏟️ *Cancha:* ${reserva.servicio_nombre || ''}\n` +
+                           `📅 *Fecha:* ${formattedDateStr}\n` +
+                           `🕐 *Horario:* ${startTimeStr} - ${endTimeStr}`;
+                } else if (estado === 'cancelado') {
+                    text = `❌ *Notificación de Reserva Cancelada* ⚽\n\n` +
+                           `Se ha cancelado una reserva en *La Viña Canchas Sintéticas*:\n\n` +
+                           `👤 *Cliente:* ${reserva.cliente_nombre || ''}\n` +
+                           `🏟️ *Cancha:* ${reserva.servicio_nombre || ''}\n` +
+                           `📅 *Fecha:* ${formattedDateStr}\n` +
+                           `🕐 *Horario:* ${startTimeStr} - ${endTimeStr}`;
+                }
+
+                if (text !== '') {
+                    targetPhones.forEach(phone => {
+                        const waTask = sendWhatsAppMessage(phone, text);
+                        promises.push(waTask.then(r => ({ type: 'whatsapp', res: r })).catch(e => ({ type: 'whatsapp', error: e.message })));
+                    });
+                }
+            }
+
+            if (promises.length > 0) {
+                const results = await Promise.allSettled(promises);
+                results.forEach(item => {
+                    if (item.status === 'fulfilled' && item.value) {
+                        notificationResults[item.value.type] = item.value.res || item.value.error || 'done';
+                    }
+                });
+            }
+        } catch (notificationError) {
+            console.error(`Error no bloqueante en notificaciones de ${estado}:`, notificationError);
+        }
+    }
+
+    return res.status(200).json({
+        success: true,
+        code: 'RESERVATION_UPDATED',
+        message: `Reserva actualizada a ${estado}`,
+        estado: estado,
+        updated: true,
+        notifications: notificationResults
+    });
 };
 
 // Obtener todas las tarifas
@@ -583,16 +609,19 @@ exports.deleteReservasRecurrentes = async (req, res) => {
 
 exports.deleteReservation = async (req, res) => {
     const { id } = req.params;
-    const connection = await pool.getConnection();
+    let connection = null;
 
     try {
+        connection = await pool.getConnection();
         await connection.beginTransaction();
 
         // Obtener la reserva para validar su estado "utilizada" y los datos necesarios
-        const [reservaRows] = await connection.query('SELECT * FROM Reservas WHERE id = ?', [id]);
+        const [reservaRows] = await connection.query('SELECT * FROM Reservas WHERE id = ? FOR UPDATE', [id]);
         if (reservaRows.length === 0) {
             await connection.rollback();
-            return res.status(404).json({ message: 'Reserva no encontrada' });
+            connection.release();
+            connection = null;
+            return res.status(404).json({ success: false, message: 'Reserva no encontrada' });
         }
 
         const reserva = reservaRows[0];
@@ -605,7 +634,7 @@ exports.deleteReservation = async (req, res) => {
                 const raw_servicio = reserva.id_servicio;
                 const servicio_promo = (raw_servicio === 2 || raw_servicio === 3) ? 2 : raw_servicio;
 
-                const [promos] = await connection.query('SELECT * FROM promociones WHERE clienteid = ? AND servicioid = ?', [id_cliente, servicio_promo]);
+                const [promos] = await connection.query('SELECT * FROM promociones WHERE clienteid = ? AND servicioid = ? FOR UPDATE', [id_cliente, servicio_promo]);
                 if (promos.length > 0) {
                     const promo = promos[0];
                     if (promo.cantidad_servicios > 0) {
@@ -619,13 +648,21 @@ exports.deleteReservation = async (req, res) => {
         await connection.query('DELETE FROM Reservas WHERE id = ?', [id]);
 
         await connection.commit();
-        res.json({ message: 'Reserva eliminada exitosamente y servicio habilitado.' });
-    } catch (error) {
-        await connection.rollback();
-        console.error('Error deleting reservation:', error);
-        res.status(500).json({ message: 'Error interno al eliminar la reserva' });
-    } finally {
         connection.release();
+        connection = null;
+        return res.json({ success: true, message: 'Reserva eliminada exitosamente y servicio habilitado.' });
+    } catch (error) {
+        if (connection) {
+            try {
+                await connection.rollback();
+            } catch (rbErr) {
+                console.error('Error during rollback in deleteReservation:', rbErr);
+            }
+            connection.release();
+            connection = null;
+        }
+        console.error('Error deleting reservation:', error);
+        return res.status(500).json({ success: false, message: 'Error interno al eliminar la reserva' });
     }
 };
 
@@ -633,33 +670,58 @@ exports.toggleUtilizada = async (req, res) => {
     const { id } = req.params;
     const { utilizada } = req.body;
 
-    const connection = await pool.getConnection();
+    // Validación estricta: req.body.utilizada debe ser un booleano real (true o false)
+    if (typeof utilizada !== 'boolean') {
+        return res.status(400).json({
+            success: false,
+            code: 'INVALID_UTILIZADA_VALUE',
+            message: 'El campo "utilizada" es obligatorio y debe ser un valor booleano (true o false).'
+        });
+    }
+
+    let connection = null;
 
     try {
+        connection = await pool.getConnection();
         await connection.beginTransaction();
 
-        const [reservaRows] = await connection.query('SELECT * FROM Reservas WHERE id = ?', [id]);
+        const [reservaRows] = await connection.query('SELECT * FROM Reservas WHERE id = ? FOR UPDATE', [id]);
         if (reservaRows.length === 0) {
             await connection.rollback();
-            return res.status(404).json({ message: 'Reserva no encontrada' });
+            connection.release();
+            connection = null;
+            return res.status(404).json({ success: false, message: 'Reserva no encontrada' });
         }
 
         const reserva = reservaRows[0];
-        const fueUtilizadaPreviamente = reserva.utilizada;
+        const fueUtilizadaPreviamente = Boolean(reserva.utilizada);
+        const nuevoValorUtilizada = utilizada;
 
-        await connection.query('UPDATE Reservas SET utilizada = ? WHERE id = ?', [utilizada, id]);
+        // Idempotencia: Si ya tiene el valor solicitado, no duplicar ni modificar
+        if (fueUtilizadaPreviamente === nuevoValorUtilizada) {
+            await connection.rollback();
+            connection.release();
+            connection = null;
+            return res.status(200).json({
+                success: true,
+                message: `La reserva ya se encontraba marcada como ${nuevoValorUtilizada ? 'utilizada' : 'no utilizada'}.`,
+                utilizada: nuevoValorUtilizada
+            });
+        }
+
+        await connection.query('UPDATE Reservas SET utilizada = ? WHERE id = ?', [nuevoValorUtilizada, id]);
 
         const origenVal = reserva.origen || 'Normal';
-        if (utilizada && !fueUtilizadaPreviamente) {
-            // Only non-championship
+        if (nuevoValorUtilizada && !fueUtilizadaPreviamente) {
+            // Solo reservas normales (no campeonatos)
             if (origenVal === 'Normal') {
                 const id_cliente = reserva.id_cliente;
                 const raw_servicio = reserva.id_servicio;
-                // Futbol 5 is 2 or 3, but in promociones we use 2
+                // Futbol 5 es 2 o 3, pero en promociones se usa 2
                 const servicio_promo = (raw_servicio === 2 || raw_servicio === 3) ? 2 : raw_servicio;
                 const fecha_reserva = new Date(reserva.fecha);
 
-                const [promos] = await connection.query('SELECT * FROM promociones WHERE clienteid = ? AND servicioid = ?', [id_cliente, servicio_promo]);
+                const [promos] = await connection.query('SELECT * FROM promociones WHERE clienteid = ? AND servicioid = ? FOR UPDATE', [id_cliente, servicio_promo]);
                 
                 if (promos.length > 0) {
                     const promo = promos[0];
@@ -682,21 +744,20 @@ exports.toggleUtilizada = async (req, res) => {
                         );
                     }
                 } else {
-                    // Create new promo
+                    // Crear nuevo registro de promoción
                     await connection.query(
                         'INSERT INTO promociones (clienteid, servicioid, cantidad_servicios, fecha_ultimoserv) VALUES (?, ?, ?, ?)',
                         [id_cliente, servicio_promo, 1, reserva.fecha]
                     );
                 }
             }
-        } else if (!utilizada && fueUtilizadaPreviamente) {
-            // If they un-check it, we should ideally decrement, but for simplicity we can just decrement if possible
+        } else if (!nuevoValorUtilizada && fueUtilizadaPreviamente) {
             if (origenVal === 'Normal') {
                 const id_cliente = reserva.id_cliente;
                 const raw_servicio = reserva.id_servicio;
                 const servicio_promo = (raw_servicio === 2 || raw_servicio === 3) ? 2 : raw_servicio;
 
-                const [promos] = await connection.query('SELECT * FROM promociones WHERE clienteid = ? AND servicioid = ?', [id_cliente, servicio_promo]);
+                const [promos] = await connection.query('SELECT * FROM promociones WHERE clienteid = ? AND servicioid = ? FOR UPDATE', [id_cliente, servicio_promo]);
                 if (promos.length > 0) {
                     const promo = promos[0];
                     if (promo.cantidad_servicios > 0) {
@@ -707,13 +768,26 @@ exports.toggleUtilizada = async (req, res) => {
         }
 
         await connection.commit();
-        res.json({ message: `Reserva marcada como ${utilizada ? 'utilizada' : 'no utilizada'}` });
-    } catch (error) {
-        await connection.rollback();
-        console.error('Error toggling utilizada:', error);
-        res.status(500).json({ message: 'Error interno del servidor' });
-    } finally {
         connection.release();
+        connection = null;
+
+        return res.status(200).json({
+            success: true,
+            message: `Reserva marcada como ${nuevoValorUtilizada ? 'utilizada' : 'no utilizada'}`,
+            utilizada: nuevoValorUtilizada
+        });
+    } catch (error) {
+        if (connection) {
+            try {
+                await connection.rollback();
+            } catch (rbErr) {
+                console.error('Error during rollback in toggleUtilizada:', rbErr);
+            }
+            connection.release();
+            connection = null;
+        }
+        console.error('Error toggling utilizada:', error);
+        return res.status(500).json({ success: false, message: 'Error interno del servidor' });
     }
 };
 

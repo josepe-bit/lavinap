@@ -165,6 +165,16 @@ const AdminDashboard = () => {
         return { Authorization: `Bearer ${token}` };
     };
 
+    const handleAuthError = (err) => {
+        if (err.response?.status === 401) {
+            localStorage.removeItem('lavina_token');
+            localStorage.removeItem('lavina_user');
+            navigate('/admin/login');
+            return true;
+        }
+        return false;
+    };
+
     const checkAuthAndFetch = async () => {
         const token = localStorage.getItem('lavina_token');
         const userStr = localStorage.getItem('lavina_user');
@@ -185,10 +195,7 @@ const AdminDashboard = () => {
                 fetchReservasRecurrentes()
             ]);
         } catch (err) {
-            if (err.response?.status === 401 || err.response?.status === 403) {
-                localStorage.removeItem('lavina_token');
-                navigate('/admin/login');
-            }
+            if (handleAuthError(err)) return;
         } finally {
             setLoading(false);
         }
@@ -196,9 +203,10 @@ const AdminDashboard = () => {
 
     const fetchReservations = async () => {
         try {
-            const res = await axios.get(`${API_URL}/admin/reservations`, { headers: getAuthHeaders() });
+            const res = await axios.get(`${API_URL}/admin/reservations`, { headers: getAuthHeaders(), timeout: 10000 });
             setReservations(res.data || []);
         } catch (err) {
+            if (handleAuthError(err)) return;
             console.error('Error fetching reservations:', err);
         }
     };
@@ -752,16 +760,17 @@ const AdminDashboard = () => {
                 setReservations(prev => prev.map(r => r.id === id ? { ...r, estado: status } : r));
             }
         } catch (err) {
+            if (handleAuthError(err)) return;
             console.error('Error actualizando el estado de la reserva:', err);
-            const msg = err.response?.data?.message || (err.code === 'ECONNABORTED' ? 'Tiempo de espera agotado (Timeout)' : 'Error actualizando el estado de la reserva');
+            const msg = err.response?.data?.message || (err.code === 'ECONNABORTED' ? 'Tiempo de espera agotado al comunicar con el servidor' : 'Error actualizando el estado de la reserva');
             alert(msg);
         } finally {
-            await fetchReservations();
             setUpdatingStatusIds(prev => {
                 const next = new Set(prev);
                 next.delete(id);
                 return next;
             });
+            fetchReservations().catch(e => console.warn('Error en recarga diferida de reservas:', e));
         }
     };
 
@@ -770,18 +779,26 @@ const AdminDashboard = () => {
         setUpdatingStatusIds(prev => new Set(prev).add(id));
         try {
             const newValue = !currentValue;
-            await axios.put(`${API_URL}/admin/reservations/${id}/utilizada`, { utilizada: newValue }, { headers: getAuthHeaders(), timeout: 15000 });
-            setReservations(prev => prev.map(r => r.id === id ? { ...r, utilizada: newValue } : r));
+            const res = await axios.put(
+                `${API_URL}/admin/reservations/${id}/utilizada`,
+                { utilizada: newValue },
+                { headers: getAuthHeaders(), timeout: 15000 }
+            );
+            if (res.data?.success || res.status === 200) {
+                setReservations(prev => prev.map(r => r.id === id ? { ...r, utilizada: newValue } : r));
+            }
         } catch (err) {
+            if (handleAuthError(err)) return;
             console.error('Error actualizando el estado de uso:', err);
-            alert(err.response?.data?.message || 'Error actualizando el estado de uso');
+            const msg = err.response?.data?.message || (err.code === 'ECONNABORTED' ? 'Tiempo de espera agotado al comunicar con el servidor' : 'Error actualizando el estado de uso');
+            alert(msg);
         } finally {
-            await fetchReservations();
             setUpdatingStatusIds(prev => {
                 const next = new Set(prev);
                 next.delete(id);
                 return next;
             });
+            fetchReservations().catch(e => console.warn('Error en recarga diferida de reservas:', e));
         }
     };
 
@@ -791,19 +808,21 @@ const AdminDashboard = () => {
         setUpdatingStatusIds(prev => new Set(prev).add(id));
         try {
             const res = await axios.delete(`${API_URL}/admin/reservations/${id}`, { headers: getAuthHeaders(), timeout: 15000 });
-            alert(res.data.message || 'Reserva eliminada con éxito y el servicio ha quedado habilitado.');
-            await fetchReservations();
-            await fetchPromociones();
+            alert(res.data?.message || 'Reserva eliminada con éxito y el servicio ha quedado habilitado.');
+            setReservations(prev => prev.filter(r => r.id !== id));
+            fetchPromociones().catch(e => console.warn('Error refrescando promociones:', e));
         } catch (err) {
+            if (handleAuthError(err)) return;
             console.error('Error al eliminar la reserva:', err);
-            alert(err.response?.data?.message || 'Error al eliminar la reserva.');
+            const msg = err.response?.data?.message || (err.code === 'ECONNABORTED' ? 'Tiempo de espera agotado al eliminar la reserva' : 'Error al eliminar la reserva.');
+            alert(msg);
         } finally {
-            await fetchReservations();
             setUpdatingStatusIds(prev => {
                 const next = new Set(prev);
                 next.delete(id);
                 return next;
             });
+            fetchReservations().catch(e => console.warn('Error en recarga diferida de reservas:', e));
         }
     };
 
@@ -1128,7 +1147,7 @@ const AdminDashboard = () => {
             icon: <LayoutDashboard size={20} />,
             color: 'green',
             items: [
-                { key: 'reservas', label: 'Reservas Días', icon: <Calendar size={18} />, fetch: null },
+                { key: 'reservas', label: 'Reservas Días', icon: <Calendar size={18} />, fetch: fetchReservations },
                 { key: 'recurrentes', label: 'Abonados / Fijas', icon: <ClipboardList size={18} />, fetch: null },
                 { key: 'tarifas', label: 'Tarifas', icon: <DollarSign size={18} />, fetch: () => { fetchTarifas(); fetchServicios(); } },
                 { key: 'servicios', label: 'Servicios', icon: <ClipboardList size={18} />, fetch: fetchServicios },
