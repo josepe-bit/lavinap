@@ -778,7 +778,7 @@ const AdminDashboard = () => {
         if (updatingStatusIds.has(id)) return;
         setUpdatingStatusIds(prev => new Set(prev).add(id));
         try {
-            const newValue = !currentValue;
+            const newValue = !Boolean(currentValue);
             const res = await axios.put(
                 `${API_URL}/admin/reservations/${id}/utilizada`,
                 { utilizada: newValue },
@@ -792,13 +792,13 @@ const AdminDashboard = () => {
             console.error('Error actualizando el estado de uso:', err);
             const msg = err.response?.data?.message || (err.code === 'ECONNABORTED' ? 'Tiempo de espera agotado al comunicar con el servidor' : 'Error actualizando el estado de uso');
             alert(msg);
+            fetchReservations().catch(e => console.warn('Error en recarga de recuperación de reservas:', e));
         } finally {
             setUpdatingStatusIds(prev => {
                 const next = new Set(prev);
                 next.delete(id);
                 return next;
             });
-            fetchReservations().catch(e => console.warn('Error en recarga diferida de reservas:', e));
         }
     };
 
@@ -1429,16 +1429,18 @@ const AdminDashboard = () => {
                                                 <td className="px-6 py-4 whitespace-nowrap text-center">
                                                     {reserva.estado === 'confirmado' ? (
                                                         <button
-                                                            onClick={() => toggleUtilizada(reserva.id, reserva.utilizada)}
+                                                            type="button"
+                                                            onClick={() => toggleUtilizada(reserva.id, Boolean(reserva.utilizada))}
                                                             disabled={updatingStatusIds.has(reserva.id)}
                                                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                                                                reserva.utilizada
+                                                                Boolean(reserva.utilizada)
                                                                     ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 ring-1 ring-emerald-300'
                                                                     : 'bg-gray-100 text-gray-500 hover:bg-gray-200 ring-1 ring-gray-200'
                                                             } ${updatingStatusIds.has(reserva.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                            title={reserva.utilizada ? 'Marcar como no utilizada' : 'Marcar como utilizada'}
+                                                            title={Boolean(reserva.utilizada) ? 'Marcar como no utilizada' : 'Marcar como utilizada'}
                                                         >
-                                                            {reserva.utilizada ? <><Eye size={14} /> Utilizada</> : <><EyeOff size={14} /> No utilizada</>}
+                                                            {Boolean(reserva.utilizada) ? <Eye size={14} /> : <EyeOff size={14} />}
+                                                            <span>{Boolean(reserva.utilizada) ? 'Utilizada' : 'No utilizada'}</span>
                                                         </button>
                                                     ) : (
                                                         <span className="text-xs text-gray-400">—</span>
